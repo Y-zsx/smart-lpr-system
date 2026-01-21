@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
 import { BarChart3 } from 'lucide-react';
+import { usePlateStore } from '../store/plateStore';
 
 interface DailyStat {
     date: string;
@@ -14,23 +15,44 @@ interface DailyStatsChartProps {
 export const DailyStatsChart: React.FC<DailyStatsChartProps> = ({ date }) => {
     const [stats, setStats] = useState<DailyStat[]>([]);
     const [loading, setLoading] = useState(true);
+    const { settings } = usePlateStore();
 
     useEffect(() => {
         const fetchStats = async () => {
+            setLoading(true);
             try {
-                const endDate = new Date(date).setHours(23, 59, 59, 999);
-                const data = await apiClient.getDailyStats(endDate);
-                // 确保数据按日期升序排列以用于图表显示
-                setStats(data.reverse());
+                if (settings.isDemoMode) {
+                    // 生成模拟数据
+                    const mockStats: DailyStat[] = [];
+                    for (let i = 6; i >= 0; i--) {
+                        const d = new Date();
+                        d.setDate(d.getDate() - i);
+                        mockStats.push({
+                            date: d.toISOString().split('T')[0],
+                            count: Math.floor(Math.random() * 200) + 50
+                        });
+                    }
+                    setStats(mockStats);
+                    await new Promise(resolve => setTimeout(resolve, 500)); // 模拟网络延迟
+                } else {
+                    const endDate = new Date(date).setHours(23, 59, 59, 999);
+                    const data = await apiClient.getDailyStats(endDate);
+                    // 确保数据按日期升序排列以用于图表显示
+                    setStats(data.reverse());
+                }
             } catch (error) {
                 console.error('加载统计数据失败', error);
+                // 出错时如果是演示模式，确保有兜底数据
+                if (settings.isDemoMode) {
+                     setStats([]);
+                }
             } finally {
                 setLoading(false);
             }
         };
 
         fetchStats();
-    }, [date]);
+    }, [date, settings.isDemoMode]);
 
     if (loading) return <div className="h-48 flex items-center justify-center text-gray-400">加载中...</div>;
     if (stats.length === 0) return <div className="h-48 flex items-center justify-center text-gray-400">暂无数据</div>;

@@ -3,6 +3,7 @@ import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts';
 import { apiClient } from '../api/client';
 import { Map, Calendar, Database } from 'lucide-react';
+import { usePlateStore } from '../store/plateStore';
 
 const PROVINCE_MAP: Record<string, string> = {
     '京': '北京市', '津': '天津市', '沪': '上海市', '渝': '重庆市',
@@ -24,6 +25,7 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = ({ date }) => {
     const [mapData, setMapData] = useState<{ name: string, value: number }[]>([]);
     const [loading, setLoading] = useState(true);
     const [geoJsonLoaded, setGeoJsonLoaded] = useState(false);
+    const { settings } = usePlateStore();
 
     useEffect(() => {
         // 加载中国地图 GeoJSON
@@ -46,26 +48,37 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = ({ date }) => {
 
     useEffect(() => {
         const fetchData = async () => {
+            setLoading(true);
             try {
-                setLoading(true);
-                const timestamp = new Date(date).getTime();
-                const stats = await apiClient.getRegionStats(viewMode, timestamp);
-                // stats 格式为 [{province: '苏', count: 10}, ...]
+                if (settings.isDemoMode) {
+                    // 生成模拟数据
+                    const mockData = Object.values(PROVINCE_MAP).map(province => ({
+                        name: province,
+                        value: Math.floor(Math.random() * 500)
+                    }));
+                    setMapData(mockData);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                } else {
+                    const timestamp = new Date(date).getTime();
+                    const stats = await apiClient.getRegionStats(viewMode, timestamp);
+                    // stats 格式为 [{province: '苏', count: 10}, ...]
 
-                const formattedData = stats.map((item: any) => ({
-                    name: PROVINCE_MAP[item.province] || item.province,
-                    value: item.count
-                }));
+                    const formattedData = stats.map((item: any) => ({
+                        name: PROVINCE_MAP[item.province] || item.province,
+                        value: item.count
+                    }));
 
-                setMapData(formattedData);
+                    setMapData(formattedData);
+                }
             } catch (error) {
                 console.error("获取区域统计失败", error);
+                if (settings.isDemoMode) setMapData([]);
             } finally {
                 setLoading(false);
             }
         };
         fetchData();
-    }, [viewMode, date]);
+    }, [viewMode, date, settings.isDemoMode]);
 
     const getOption = () => {
         const maxVal = Math.max(...mapData.map(d => d.value), 10); // 如果为空，默认最大值为 10
