@@ -17,6 +17,7 @@ export interface Alarm {
 interface AlarmStore {
     alarms: Alarm[];
     fetchAlarms: () => Promise<void>;
+    addAlarm: (alarm: Alarm) => void;
 }
 
 export const useAlarmStore = create<AlarmStore>((set) => ({
@@ -28,5 +29,8 @@ export const useAlarmStore = create<AlarmStore>((set) => ({
         } catch (error) {
             console.error('Failed to fetch alarms:', error);
         }
-    }
+    },
+    addAlarm: (alarm) => set((state) => ({
+        alarms: [alarm, ...state.alarms]
+    }))
 }));

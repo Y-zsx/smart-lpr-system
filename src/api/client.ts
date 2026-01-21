@@ -96,6 +96,23 @@ export const apiClient = {
         return res.json();
     },
 
+    async getDashboardStats(): Promise<any> {
+        // 这是一个模拟接口，用于演示趋势数据
+        // 实际对接时，请替换为真实后端接口：return this.fetch('/api/stats/dashboard').then(res => res.json());
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                resolve({
+                    trends: {
+                        total: { value: '12%', direction: 'up' },
+                        blue: { value: '5%', direction: 'up' },
+                        green: { value: '8%', direction: 'up' },
+                        other: { value: '2%', direction: 'down' }
+                    }
+                });
+            }, 300);
+        });
+    },
+
     async getRegionStats(range: 'daily' | 'total' = 'total', date?: number) {
         let url = `${BACKEND_URL}/api/stats/region?range=${range}`;
         if (date) {

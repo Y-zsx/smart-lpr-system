@@ -19,12 +19,23 @@ export interface LicensePlate {
     saved?: boolean; // 车牌是否已保存到后端
 }
 
+export interface TrendData {
+    value: string;
+    direction: 'up' | 'down' | 'neutral';
+}
+
 export interface RecognitionStats {
     total: number;
     blue: number;
     yellow: number;
     green: number;
     other: number;
+    trends?: {
+        total: TrendData;
+        blue: TrendData;
+        green: TrendData;
+        other: TrendData;
+    };
 }
 
 // 为了兼容 Store 的别名

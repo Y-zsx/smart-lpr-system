@@ -9,8 +9,10 @@ interface PlateStore {
         confidenceThreshold: number; // 0-1
         scanInterval: number; // ms
         enableHaptics: boolean;
+        isDemoMode: boolean;
     };
     setPlates: (plates: Plate[]) => void;
+    setStats: (stats: PlateStats) => void;
     addPlate: (plate: Plate) => void;
     setScanning: (isScanning: boolean) => void;
     updateSettings: (settings: Partial<PlateStore['settings']>) => void;
@@ -24,9 +26,10 @@ export const usePlateStore = create<PlateStore>((set) => ({
         confidenceThreshold: 0.7,
         scanInterval: 2000,
         enableHaptics: true,
+        isDemoMode: false,
     },
     setPlates: (plates) => set((state) => {
-        const stats = plates.reduce((acc, plate) => {
+        const baseStats = plates.reduce((acc, plate) => {
             acc.total++;
             if (plate.type === 'blue') acc.blue++;
             else if (plate.type === 'green') acc.green++;
@@ -35,8 +38,15 @@ export const usePlateStore = create<PlateStore>((set) => ({
             return acc;
         }, { total: 0, blue: 0, green: 0, yellow: 0, other: 0 });
 
+        // 保留现有的 trends 数据
+        const stats = {
+            ...baseStats,
+            trends: state.stats.trends
+        };
+
         return { plates, stats };
     }),
+    setStats: (stats) => set({ stats }),
     addPlate: (plate) => set((state) => {
         const newPlates = [plate, ...state.plates];
         const newStats = { ...state.stats };

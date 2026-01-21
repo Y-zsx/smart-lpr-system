@@ -16,6 +16,7 @@ import { usePlateStore } from '../store/plateStore';
 import { Activity, ShieldCheck, Zap, Car, Camera, Upload, Calendar, AlertOctagon, Settings } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { hapticFeedback } from '../utils/mobileFeatures';
+import { simulationService } from '../services/simulationService';
 
 export const Dashboard: React.FC = () => {
     const { stats, setPlates, settings } = usePlateStore();
@@ -24,6 +25,16 @@ export const Dashboard: React.FC = () => {
     const [selectedCategory, setSelectedCategory] = useState<{ type: string, label: string } | null>(null);
     const [showBlacklist, setShowBlacklist] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+
+    // Handle Simulation Mode
+    useEffect(() => {
+        if (settings.isDemoMode) {
+            simulationService.start();
+        } else {
+            simulationService.stop();
+        }
+        return () => simulationService.stop();
+    }, [settings.isDemoMode]);
 
     useEffect(() => {
         const fetchData = async () => {
@@ -113,24 +124,32 @@ export const Dashboard: React.FC = () => {
                     value={stats.total}
                     icon={<Activity size={20} />}
                     color="bg-blue-500"
+                    trend="12%"
+                    trendDirection="up"
                 />
                 <StatCard
                     label="蓝牌车辆"
                     value={stats.blue}
                     icon={<ShieldCheck size={20} />}
                     color="bg-indigo-500"
+                    trend="5%"
+                    trendDirection="up"
                 />
                 <StatCard
                     label="新能源"
                     value={stats.green}
                     icon={<Zap size={20} />}
                     color="bg-green-500"
+                    trend="8%"
+                    trendDirection="up"
                 />
                 <StatCard
                     label="其他车辆"
                     value={stats.yellow + stats.other}
                     icon={<Car size={20} />}
                     color="bg-orange-500"
+                    trend="2%"
+                    trendDirection="down"
                 />
             </div>
 
