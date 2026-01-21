@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Calendar, Clock, MapPin } from 'lucide-react';
+import { X, Clock, MapPin } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { LicensePlate } from '../types/plate';
 
@@ -16,8 +16,9 @@ export const CategoryDetail: React.FC<CategoryDetailProps> = ({ type, label, onC
     useEffect(() => {
         const fetchPlates = async () => {
             try {
-                // 获取该类型的所有历史记录（后端默认限制 100 条）
-                // 如果需要，我们稍后可以添加分页
+                // 确保我们使用当前选择的日期（如果有）或者默认获取最近的记录
+                // 这里我们可能需要从父组件传递日期，或者默认获取所有历史
+                // 为了简单起见，我们先获取该类型的所有记录
                 const data = await apiClient.getHistory(undefined, undefined, type);
                 setPlates(data);
             } catch (error) {
@@ -32,25 +33,7 @@ export const CategoryDetail: React.FC<CategoryDetailProps> = ({ type, label, onC
     const getImageUrl = (path?: string) => {
         if (!path) return 'https://via.placeholder.com/400x300?text=No+Image';
         if (path.startsWith('http')) return path;
-        // 假设是 R2 公共存储桶 URL 或类似地址。
-        // 由于代码中没有配置 R2 的公共域名，
-        // 我们依赖 `image_path` 可能是一个 key 的事实。
-        // 但是等等，`plateService` 保存的是 `imageKey`。
-        // 我们需要一种方法来查看它。
-        // 目前，我们假设后端返回预签名 GET URL 或我们使用公共域名。
-        // 如果只是一个 key，我们可能需要另一个 API 来获取查看 URL。
-        // 然而，查看 `plateService.ts`，`imageUrl` 设置为 `URL.createObjectURL(file)` 用于本地显示。
-        // 但对于历史记录，我们需要远程 URL。
-        // 我们暂时假设我们可以构建它或者它是一个完整的 URL。
-        // 如果它是一个像 `uploads/user/timestamp-file.jpg` 的 key，我们需要公共 R2 域名。
-        // 如果不是完整 URL，我们使用占位符，或者尝试获取预签名 URL？
-        // 实际上，`apiClient` 有 `getUploadUrl` 但没有 `getDownloadUrl`。
-        // 我们假设数据库中存储的 `image_path` 是可用的，或者我们需要修复这个问题。
-        // 在 `plateService.ts` 中，`imageKey` 传递给 `savePlate`。
-        // 我们假设可以通过 `http://localhost:8000/storage/<key>` 访问它（如果是公开的），
-        // 或者我们需要后端端点来获取图像。
-        // 对于这个 MVP，如果它看起来像 URL，我们就直接使用 key，否则显示占位符。
-        return `http://localhost:8000/storage/${path}`; // 猜测公共 URL 结构或使用代理
+        return path; // 如果是 base64 或 blob url
     };
 
     return (
