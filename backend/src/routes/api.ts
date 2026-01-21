@@ -6,6 +6,7 @@ import * as StatsController from '../controllers/StatsController';
 import * as UploadController from '../controllers/UploadController';
 import * as BlacklistController from '../controllers/BlacklistController';
 import * as AlarmController from '../controllers/AlarmController';
+import * as ExportController from '../controllers/ExportController';
 
 const router = Router();
 const upload = multer({ dest: path.join(__dirname, '../../uploads/temp') });
@@ -25,10 +26,7 @@ router.get('/stats/dashboard', StatsController.getDashboardStats);
 router.get('/stats/region', StatsController.getRegionStats);
 
 // Export
-router.get('/export-records', (req: Request, res: Response) => {
-    // TODO: Implement export records logic with csv-stringify
-    res.status(501).send('Not Implemented');
-});
+router.get('/export-records', ExportController.exportRecords);
 
 // Blacklist
 router.get('/blacklist', BlacklistController.getBlacklist);
