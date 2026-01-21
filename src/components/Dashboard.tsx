@@ -117,8 +117,8 @@ export const Dashboard: React.FC = () => {
 
     return (
         <MainLayout actions={headerActions}>
-            {/* Stats Grid - Mobile Optimized */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+            {/* 1. Stat Cards Row */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <StatCard
                     label="今日识别"
                     value={stats.total}
@@ -153,13 +153,14 @@ export const Dashboard: React.FC = () => {
                 />
             </div>
 
-            {/* Main Content Area */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                {/* Left Column: Primary Actions & Visuals */}
-                <div className="lg:col-span-2 space-y-6">
-                    {/* Mode Switcher & Camera/Upload Area */}
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                        <div className="flex border-b border-gray-100">
+            {/* 2. Main Bento Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                {/* Left Column: Camera (8) + Charts (8) */}
+                <div className="lg:col-span-8 flex flex-col gap-6">
+                    {/* Camera Section */}
+                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden h-[500px] relative flex flex-col">
+                        <div className="flex border-b border-gray-100 shrink-0">
                             <button
                                 onClick={() => handleModeChange('camera')}
                                 className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${mode === 'camera'
@@ -182,37 +183,37 @@ export const Dashboard: React.FC = () => {
                             </button>
                         </div>
 
-                        <div className="h-[300px] md:h-[400px] lg:h-[500px] bg-black relative">
+                        <div className="flex-1 bg-black relative min-h-0">
                             {mode === 'camera' ? <CameraView /> : <FileUpload />}
                         </div>
                     </div>
-
-                    {/* Charts Section */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <DailyStatsChart date={selectedDate} />
-                        <PlateHeatmap date={selectedDate} />
+                    
+                    {/* Charts Row */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[350px]">
+                         <DailyStatsChart date={selectedDate} />
+                         <PlateHeatmap date={selectedDate} />
                     </div>
                 </div>
 
-                {/* Right Column: Lists & Secondary Stats */}
-                <div className="space-y-6">
-                    <AlarmList />
+                {/* Right Column: Sidebar (4) */}
+                <div className="lg:col-span-4 flex flex-col gap-6">
+                     {/* Alarm List - Auto Height */}
+                     <AlarmList />
 
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-                        <h3 className="text-lg font-semibold text-gray-800 mb-4">摄像头列表</h3>
-                        <div className="h-[200px]">
-                            <CameraList />
-                        </div>
-                    </div>
-
-                    <CategoryStats onCategoryClick={(type, label) => setSelectedCategory({ type, label })} />
-
-                    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col h-[500px]">
-                        <h3 className="text-lg font-semibold text-gray-800 mb-4">识别记录</h3>
-                        <div className="flex-1 min-h-0">
+                     {/* Plate List - Flex Grow to fill space */}
+                     <div className="flex-1 min-h-[400px] max-h-[600px] bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col">
+                        <div className="flex-1 min-h-0 overflow-y-auto">
                             <PlateList date={selectedDate} />
                         </div>
-                    </div>
+                     </div>
+
+                     {/* Bottom Row of Sidebar */}
+                     <div className="grid grid-cols-2 gap-4 h-[200px]">
+                        <CategoryStats onCategoryClick={(type, label) => setSelectedCategory({ type, label })} />
+                        <div className="h-full">
+                            <CameraList />
+                        </div>
+                     </div>
                 </div>
             </div>
 
