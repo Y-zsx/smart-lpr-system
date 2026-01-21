@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import ReactECharts from 'echarts-for-react';
+import * as echarts from 'echarts';
 import { apiClient } from '../api/client';
 import { BarChart3 } from 'lucide-react';
 import { usePlateStore } from '../store/plateStore';
@@ -54,36 +56,119 @@ export const DailyStatsChart: React.FC<DailyStatsChartProps> = ({ date }) => {
         fetchStats();
     }, [date, settings.isDemoMode]);
 
-    if (loading) return <div className="h-48 flex items-center justify-center text-gray-400">加载中...</div>;
-    if (stats.length === 0) return <div className="h-48 flex items-center justify-center text-gray-400">暂无数据</div>;
+    const getOption = () => {
+        return {
+            tooltip: {
+                trigger: 'axis',
+                formatter: '{b}<br/>识别数量: {c} 辆'
+            },
+            grid: {
+                top: '15%',
+                left: '3%',
+                right: '4%',
+                bottom: '3%',
+                containLabel: true
+            },
+            xAxis: {
+                type: 'category',
+                boundaryGap: false,
+                data: stats.map(s => s.date.slice(5)), // 只显示 MM-DD
+                axisLine: {
+                    lineStyle: {
+                        color: '#9ca3af'
+                    }
+                },
+                axisTick: {
+                    show: false
+                }
+            },
+            yAxis: {
+                type: 'value',
+                splitLine: {
+                    lineStyle: {
+                        color: '#f3f4f6',
+                        type: 'dashed'
+                    }
+                },
+                axisLine: {
+                    show: false
+                },
+                axisTick: {
+                    show: false
+                },
+                axisLabel: {
+                    color: '#9ca3af'
+                }
+            },
+            series: [
+                {
+                    name: '识别数量',
+                    type: 'line',
+                    smooth: true,
+                    showSymbol: false,
+                    symbolSize: 8,
+                    data: stats.map(s => s.count),
+                    itemStyle: {
+                        color: '#3b82f6'
+                    },
+                    lineStyle: {
+                        width: 3,
+                        shadowColor: 'rgba(59, 130, 246, 0.3)',
+                        shadowBlur: 10,
+                        shadowOffsetY: 5
+                    },
+                    areaStyle: {
+                        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            {
+                                offset: 0,
+                                color: 'rgba(59, 130, 246, 0.3)'
+                            },
+                            {
+                                offset: 1,
+                                color: 'rgba(59, 130, 246, 0.01)'
+                            }
+                        ])
+                    }
+                }
+            ]
+        };
+    };
 
-    const maxCount = Math.max(...stats.map(s => s.count), 1);
+    if (loading) return (
+        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm h-full flex flex-col">
+            <div className="flex items-center gap-2 mb-4">
+                <BarChart3 className="text-blue-600" size={20} />
+                <h3 className="font-semibold text-gray-800">每日识别趋势 (近7天)</h3>
+            </div>
+            <div className="flex-1 flex items-center justify-center text-gray-400 min-h-[200px]">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+        </div>
+    );
+
+    if (stats.length === 0) return (
+        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm h-full flex flex-col">
+            <div className="flex items-center gap-2 mb-4">
+                <BarChart3 className="text-blue-600" size={20} />
+                <h3 className="font-semibold text-gray-800">每日识别趋势 (近7天)</h3>
+            </div>
+            <div className="flex-1 flex items-center justify-center text-gray-400 min-h-[200px]">暂无数据</div>
+        </div>
+    );
 
     return (
-        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm h-full flex flex-col">
             <div className="flex items-center gap-2 mb-4">
                 <BarChart3 className="text-blue-600" size={20} />
                 <h3 className="font-semibold text-gray-800">每日识别趋势 (近7天)</h3>
             </div>
 
-            <div className="h-48 flex items-end justify-between gap-2">
-                {stats.map((stat) => (
-                    <div key={stat.date} className="flex-1 flex flex-col items-center gap-2 group">
-                        <div className="relative w-full flex justify-center items-end h-32 bg-gray-50 rounded-t-lg overflow-hidden">
-                            <div
-                                className="w-full mx-1 bg-blue-500 rounded-t transition-all duration-500 group-hover:bg-blue-600"
-                                style={{ height: `${(stat.count / maxCount) * 100}%` }}
-                            >
-                                <div className="opacity-0 group-hover:opacity-100 absolute -top-8 left-1/2 transform -translate-x-1/2 bg-black text-white text-xs px-2 py-1 rounded transition-opacity">
-                                    {stat.count}
-                                </div>
-                            </div>
-                        </div>
-                        <span className="text-xs text-gray-500 transform -rotate-45 origin-top-left mt-2 whitespace-nowrap">
-                            {stat.date.slice(5)}
-                        </span>
-                    </div>
-                ))}
+            <div className="flex-1 min-h-[200px]">
+                <ReactECharts
+                    option={getOption()}
+                    style={{ height: '100%', width: '100%' }}
+                    opts={{ renderer: 'svg' }}
+                />
             </div>
         </div>
     );
