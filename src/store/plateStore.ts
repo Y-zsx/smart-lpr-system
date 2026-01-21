@@ -13,6 +13,7 @@ interface PlateStore {
     };
     setPlates: (plates: Plate[]) => void;
     setStats: (stats: PlateStats) => void;
+    setTrends: (trends: any) => void;
     addPlate: (plate: Plate) => void;
     setScanning: (isScanning: boolean) => void;
     updateSettings: (settings: Partial<PlateStore['settings']>) => void;
@@ -47,6 +48,9 @@ export const usePlateStore = create<PlateStore>((set) => ({
         return { plates, stats };
     }),
     setStats: (stats) => set({ stats }),
+    setTrends: (trends) => set((state) => ({
+        stats: { ...state.stats, trends }
+    })),
     addPlate: (plate) => set((state) => {
         const newPlates = [plate, ...state.plates];
         const newStats = { ...state.stats };
