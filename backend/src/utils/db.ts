@@ -108,23 +108,33 @@ export const savePlate = async (plate: LicensePlate): Promise<LicensePlate> => {
 
     if (blacklistRows.length > 0) {
       const blacklistItem = blacklistRows[0];
-      await connection.execute(
-        `INSERT INTO \`alarms\` (
-          \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
-          \`plate_number\`, \`image_path\`, \`location\`, \`reason\`, \`severity\`
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          plate.id,
-          blacklistItem.id,
-          Date.now(),
-          0,
-          plate.number,
-          plate.imageUrl || null,
-          plate.location || null,
-          `Blacklisted: ${blacklistItem.reason}`,
-          blacklistItem.severity
-        ]
+      const alarmTimestamp = plate.timestamp || Date.now();
+      
+      // 检查是否已存在相同的告警（避免重复创建）
+      const [existingAlarms] = await connection.execute<RowDataPacket[]>(
+        'SELECT * FROM `alarms` WHERE `plate_number` = ? AND `blacklist_id` = ? AND `plate_id` = ?',
+        [plate.number, blacklistItem.id, plate.id]
       );
+      
+      if (existingAlarms.length === 0) {
+        await connection.execute(
+          `INSERT INTO \`alarms\` (
+            \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
+            \`plate_number\`, \`image_path\`, \`location\`, \`reason\`, \`severity\`
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            plate.id,
+            blacklistItem.id,
+            alarmTimestamp,
+            0,
+            plate.number,
+            plate.imageUrl || null,
+            plate.location || null,
+            `Blacklisted: ${blacklistItem.reason}`,
+            blacklistItem.severity
+          ]
+        );
+      }
     }
 
     await connection.commit();
@@ -204,8 +214,9 @@ export const deleteBlacklist = async (id: number): Promise<boolean> => {
 export const getAlarms = async (): Promise<Alarm[]> => {
   const connection = await pool.getConnection();
   try {
+    // 优先返回未读告警，然后按时间倒序
     const [rows] = await connection.execute<RowDataPacket[]>(
-      'SELECT * FROM `alarms` ORDER BY `timestamp` DESC'
+      'SELECT * FROM `alarms` ORDER BY `is_read` ASC, `timestamp` DESC'
     );
     
     return rows.map((row: RowDataPacket) => ({
@@ -405,23 +416,44 @@ export const savePlateRecord = async (record: PlateRecord): Promise<PlateRecord>
 
     if (blacklistRows.length > 0) {
       const blacklistItem = blacklistRows[0];
-      await connection.execute(
-        `INSERT INTO \`alarms\` (
-          \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
-          \`plate_number\`, \`image_path\`, \`location\`, \`reason\`, \`severity\`
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          record.id,
-          blacklistItem.id,
-          Date.now(),
-          0,
-          record.plateNumber,
-          record.imageUrl || null,
-          record.location || null,
-          `Blacklisted: ${blacklistItem.reason}`,
-          blacklistItem.severity
-        ]
+      console.log(`检测到黑名单车牌 ${record.plateNumber}，创建告警`);
+      
+      // 检查是否已存在相同的告警（避免重复创建）
+      // 注意：使用 plate_number, blacklist_id 和 timestamp 来检查，因为 plate_id 可能不在 plates 表中
+      const [existingAlarms] = await connection.execute<RowDataPacket[]>(
+        'SELECT * FROM `alarms` WHERE `plate_number` = ? AND `blacklist_id` = ? AND `timestamp` = ?',
+        [record.plateNumber, blacklistItem.id, record.timestamp]
       );
+      
+      if (existingAlarms.length === 0) {
+        // 使用记录的时间戳，而不是当前时间，确保告警时间与识别时间一致
+        const alarmTimestamp = record.timestamp || Date.now();
+        
+        // 注意：plate_id 设置为 NULL，因为记录保存在 plate_records 表中，不在 plates 表中
+        // 外键约束允许 NULL 值，且告警主要关联的是 blacklist_id 和 plate_number
+        await connection.execute(
+          `INSERT INTO \`alarms\` (
+            \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
+            \`plate_number\`, \`image_path\`, \`location\`, \`reason\`, \`severity\`
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            null, // plate_id 设置为 NULL，因为记录在 plate_records 表中，不在 plates 表中
+            blacklistItem.id,
+            alarmTimestamp,
+            0,
+            record.plateNumber,
+            record.imageUrl || null,
+            record.location || null,
+            `Blacklisted: ${blacklistItem.reason}`,
+            blacklistItem.severity
+          ]
+        );
+        console.log(`告警创建成功: 车牌 ${record.plateNumber}, 时间 ${new Date(alarmTimestamp).toLocaleString()}`);
+      } else {
+        console.log(`告警已存在，跳过创建: 车牌 ${record.plateNumber}`);
+      }
+    } else {
+      console.log(`车牌 ${record.plateNumber} 不在黑名单中，无需创建告警`);
     }
 
     await connection.commit();
@@ -429,6 +461,45 @@ export const savePlateRecord = async (record: PlateRecord): Promise<PlateRecord>
   } catch (error) {
     await connection.rollback();
     throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+// 为黑名单创建告警（用于添加黑名单时检查历史记录）
+export const createAlarmForBlacklist = async (record: PlateRecord, blacklistItem: BlacklistItem): Promise<void> => {
+  const connection = await pool.getConnection();
+  try {
+    // 检查是否已经存在相同的告警（避免重复创建）
+    const [existing] = await connection.execute<RowDataPacket[]>(
+      'SELECT * FROM `alarms` WHERE `plate_number` = ? AND `blacklist_id` = ? AND `timestamp` = ?',
+      [record.plateNumber, blacklistItem.id, record.timestamp]
+    );
+    
+    if (existing.length > 0) {
+      // 告警已存在，跳过
+      return;
+    }
+    
+    // 注意：plate_id 设置为 NULL，因为记录保存在 plate_records 表中，不在 plates 表中
+    // 外键约束允许 NULL 值，且告警主要关联的是 blacklist_id 和 plate_number
+    await connection.execute(
+      `INSERT INTO \`alarms\` (
+        \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
+        \`plate_number\`, \`image_path\`, \`location\`, \`reason\`, \`severity\`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        null, // plate_id 设置为 NULL，因为记录在 plate_records 表中，不在 plates 表中
+        blacklistItem.id,
+        record.timestamp,
+        0,
+        record.plateNumber,
+        record.imageUrl || null,
+        record.location || null,
+        `Blacklisted: ${blacklistItem.reason}`,
+        blacklistItem.severity
+      ]
+    );
   } finally {
     connection.release();
   }
@@ -524,6 +595,65 @@ export const getPlateGroups = async (filters?: {
     }
 
     return groups;
+  } finally {
+    connection.release();
+  }
+};
+
+// 获取所有识别记录（用于导出，不分组）
+export const getAllPlateRecords = async (filters?: {
+  start?: number;
+  end?: number;
+  type?: string;
+  plateNumber?: string;
+}): Promise<PlateRecord[]> => {
+  const connection = await pool.getConnection();
+  try {
+    let query = `
+      SELECT * FROM \`plate_records\`
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+
+    if (filters?.start) {
+      query += ' AND `timestamp` >= ?';
+      params.push(filters.start);
+    }
+    if (filters?.end) {
+      query += ' AND `timestamp` <= ?';
+      params.push(filters.end);
+    }
+    if (filters?.type) {
+      query += ' AND `plate_type` = ?';
+      params.push(filters.type);
+    }
+    if (filters?.plateNumber) {
+      query += ' AND `plate_number` = ?';
+      params.push(filters.plateNumber);
+    }
+
+    query += ' ORDER BY `timestamp` DESC';
+
+    const [rows] = await connection.execute<RowDataPacket[]>(query, params);
+
+    return rows.map((r: RowDataPacket) => ({
+      id: r.id,
+      plateNumber: r.plate_number,
+      plateType: r.plate_type,
+      confidence: parseFloat(r.confidence),
+      timestamp: parseInt(r.timestamp),
+      cameraId: r.camera_id || undefined,
+      cameraName: r.camera_name || undefined,
+      location: r.location || undefined,
+      imageUrl: r.image_url || undefined,
+      rect: r.rect_x !== null ? {
+        x: r.rect_x,
+        y: r.rect_y,
+        w: r.rect_w,
+        h: r.rect_h
+      } : undefined,
+      createdAt: parseInt(r.created_at)
+    }));
   } finally {
     connection.release();
   }

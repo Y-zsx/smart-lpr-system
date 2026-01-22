@@ -3,8 +3,8 @@ import { apiClient } from '../api/client';
 
 export interface Alarm {
     id: number;
-    plate_id: number;
-    blacklist_id: number;
+    plate_id?: string;
+    blacklist_id?: number;
     timestamp: number;
     is_read: number;
     plate_number: string;

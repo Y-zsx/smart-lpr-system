@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getBlacklist as getBlacklistFromDb, addBlacklist as addBlacklistToDb, deleteBlacklist as deleteBlacklistFromDb } from '../utils/db';
+import { getBlacklist as getBlacklistFromDb, addBlacklist as addBlacklistToDb, deleteBlacklist as deleteBlacklistFromDb, getAllPlateRecords, createAlarmForBlacklist } from '../utils/db';
 import { BlacklistItem } from '../types';
 
 export const getBlacklist = async (req: Request, res: Response) => {
@@ -18,11 +18,35 @@ export const addBlacklist = async (req: Request, res: Response) => {
         
         const items: Omit<BlacklistItem, 'id' | 'created_at'>[] = Array.isArray(data) ? data : [data];
         const newItems = await Promise.all(
-            items.map(item => addBlacklistToDb({
-                plate_number: item.plate_number,
-                reason: item.reason,
-                severity: item.severity
-            }))
+            items.map(async (item) => {
+                const newItem = await addBlacklistToDb({
+                    plate_number: item.plate_number,
+                    reason: item.reason,
+                    severity: item.severity
+                });
+                
+                // 检查历史记录，为匹配的车牌创建告警
+                try {
+                    const records = await getAllPlateRecords({
+                        plateNumber: item.plate_number
+                    });
+                    
+                    // 为最近的记录创建告警（最多创建最近5条）
+                    const recentRecords = records.slice(0, 5);
+                    for (const record of recentRecords) {
+                        await createAlarmForBlacklist(record, newItem);
+                    }
+                    
+                    if (records.length > 0) {
+                        console.log(`为黑名单车牌 ${item.plate_number} 创建了 ${recentRecords.length} 条告警`);
+                    }
+                } catch (error) {
+                    console.error('创建告警失败:', error);
+                    // 不阻止黑名单添加，只记录错误
+                }
+                
+                return newItem;
+            })
         );
 
         res.json(Array.isArray(data) ? newItems : newItems[0]);
