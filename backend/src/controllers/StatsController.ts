@@ -4,15 +4,66 @@ import { DashboardStats } from '../types';
 
 export const getDashboardStats = async (req: Request, res: Response) => {
     try {
-        const plates = await getPlates();
+        const allPlates = await getPlates();
 
-        const total = plates.length;
-        const blue = plates.filter(p => p.type === 'blue').length;
-        const green = plates.filter(p => p.type === 'green').length;
-        const yellow = plates.filter(p => p.type === 'yellow').length;
+        // 计算当前总数
+        const total = allPlates.length;
+        const blue = allPlates.filter(p => p.type === 'blue').length;
+        const green = allPlates.filter(p => p.type === 'green').length;
+        const yellow = allPlates.filter(p => p.type === 'yellow').length;
         const other = total - blue - green - yellow;
 
-        // Mock trends for now
+        // 计算趋势：比较今天和昨天的数据
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+        const yesterdayStart = new Date(todayStart);
+        yesterdayStart.setDate(yesterdayStart.getDate() - 1);
+        const yesterdayEnd = new Date(todayEnd);
+        yesterdayEnd.setDate(yesterdayEnd.getDate() - 1);
+
+        // 获取今天的数据
+        const todayPlates = allPlates.filter(p => {
+            const timestamp = new Date(p.timestamp);
+            return timestamp >= todayStart && timestamp <= todayEnd;
+        });
+        const todayTotal = todayPlates.length;
+        const todayBlue = todayPlates.filter(p => p.type === 'blue').length;
+        const todayGreen = todayPlates.filter(p => p.type === 'green').length;
+        const todayYellow = todayPlates.filter(p => p.type === 'yellow').length;
+        const todayOther = todayTotal - todayBlue - todayGreen - todayYellow;
+
+        // 获取昨天的数据
+        const yesterdayPlates = allPlates.filter(p => {
+            const timestamp = new Date(p.timestamp);
+            return timestamp >= yesterdayStart && timestamp <= yesterdayEnd;
+        });
+        const yesterdayTotal = yesterdayPlates.length;
+        const yesterdayBlue = yesterdayPlates.filter(p => p.type === 'blue').length;
+        const yesterdayGreen = yesterdayPlates.filter(p => p.type === 'green').length;
+        const yesterdayYellow = yesterdayPlates.filter(p => p.type === 'yellow').length;
+        const yesterdayOther = yesterdayTotal - yesterdayBlue - yesterdayGreen - yesterdayYellow;
+
+        // 计算趋势百分比
+        const calculateTrend = (current: number, previous: number): { value: string, direction: "up" | "down" | "neutral" } => {
+            if (previous === 0) {
+                if (current === 0) {
+                    return { value: "0%", direction: "neutral" };
+                } else {
+                    return { value: "+100%", direction: "up" };
+                }
+            }
+            const change = ((current - previous) / previous) * 100;
+            const rounded = Math.round(change);
+            if (rounded > 0) {
+                return { value: `+${rounded}%`, direction: "up" };
+            } else if (rounded < 0) {
+                return { value: `${rounded}%`, direction: "down" };
+            } else {
+                return { value: "0%", direction: "neutral" };
+            }
+        };
+
         const stats: DashboardStats = {
             total,
             blue,
@@ -20,10 +71,10 @@ export const getDashboardStats = async (req: Request, res: Response) => {
             yellow,
             other,
             trends: {
-                total: { value: "+12%", direction: "up" },
-                blue: { value: "-5%", direction: "down" },
-                green: { value: "+8%", direction: "up" },
-                other: { value: "0%", direction: "neutral" }
+                total: calculateTrend(todayTotal, yesterdayTotal),
+                blue: calculateTrend(todayBlue, yesterdayBlue),
+                green: calculateTrend(todayGreen, yesterdayGreen),
+                other: calculateTrend(todayOther + todayYellow, yesterdayOther + yesterdayYellow)
             }
         };
 
