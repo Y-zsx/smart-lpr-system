@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
 import apiRoutes from './routes/api';
+import { testConnection, initDatabase } from './config/database';
 
 dotenv.config();
 
@@ -32,6 +33,26 @@ app.get('/__user_info__', (req: Request, res: Response) => {
   });
 });
 
-app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
-});
+// 初始化数据库并启动服务器
+async function startServer() {
+  try {
+    // 初始化数据库（创建数据库和表）
+    await initDatabase();
+    
+    // 测试数据库连接
+    const connected = await testConnection();
+    if (!connected) {
+      console.error('⚠️  数据库连接失败，但服务器将继续启动');
+      console.error('⚠️  请检查数据库配置和 MySQL 服务是否运行');
+    }
+
+    app.listen(port, () => {
+      console.log(`🚀 服务器运行在 http://localhost:${port}`);
+    });
+  } catch (error) {
+    console.error('❌ 启动服务器失败:', error);
+    process.exit(1);
+  }
+}
+
+startServer();

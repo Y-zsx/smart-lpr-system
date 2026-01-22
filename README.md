@@ -34,15 +34,41 @@ python main.py
 
 AI 服务将在 `http://localhost:8001` 启动。
 
-### 2. 启动后端服务 (Node.js)
+### 2. 配置数据库 (MySQL)
 
-```bash
-cd backend
-npm install
-npm run dev
-```
+后端使用 MySQL 数据库存储数据。请按照以下步骤配置：
 
-后端服务将在 `http://localhost:8000` 启动。
+1. **安装 MySQL**
+   - 如果还没有安装 MySQL，请先安装 MySQL 8.0 或更高版本
+   - 下载地址：https://dev.mysql.com/downloads/mysql/
+
+2. **创建数据库配置**
+   ```bash
+   cd backend
+   cp .env.example .env
+   ```
+   
+   然后编辑 `.env` 文件，配置数据库连接信息：
+   ```env
+   DB_HOST=localhost
+   DB_PORT=3306
+   DB_USER=root
+   DB_PASSWORD=your_password_here
+   DB_NAME=smart_lpr
+   ```
+
+3. **启动 MySQL 服务**
+   - Windows: 确保 MySQL 服务正在运行
+   - Linux/Mac: `sudo systemctl start mysql` 或 `brew services start mysql`
+
+4. **安装依赖并启动后端**
+   ```bash
+   cd backend
+   npm install
+   npm run dev
+   ```
+
+   后端服务启动时会自动创建数据库和表结构。服务将在 `http://localhost:8000` 启动。
 
 ### 3. 启动前端应用
 
@@ -84,5 +110,5 @@ npm run dev
 - Node.js
 - Express
 - TypeScript
-- LowDB (本地 JSON 数据库)
+- MySQL (关系型数据库)
 - Multer (文件上传)

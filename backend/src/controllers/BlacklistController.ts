@@ -1,33 +1,33 @@
 import { Request, Response } from 'express';
-import { getDb, saveDb } from '../utils/db';
+import { getBlacklist as getBlacklistFromDb, addBlacklist as addBlacklistToDb, deleteBlacklist as deleteBlacklistFromDb } from '../utils/db';
 import { BlacklistItem } from '../types';
 
 export const getBlacklist = async (req: Request, res: Response) => {
     try {
-        const db = await getDb();
-        res.json(db.blacklist);
+        const blacklist = await getBlacklistFromDb();
+        res.json(blacklist);
     } catch (error) {
+        console.error('Error fetching blacklist:', error);
         res.status(500).json({ message: 'Error fetching blacklist' });
     }
 };
 
 export const addBlacklist = async (req: Request, res: Response) => {
     try {
-        const db = await getDb();
         const data = req.body;
         
-        const items: BlacklistItem[] = Array.isArray(data) ? data : [data];
-        const newItems = items.map(item => ({
-            ...item,
-            id: Date.now() + Math.floor(Math.random() * 1000),
-            created_at: Date.now()
-        }));
-
-        db.blacklist.push(...newItems);
-        await saveDb(db);
+        const items: Omit<BlacklistItem, 'id' | 'created_at'>[] = Array.isArray(data) ? data : [data];
+        const newItems = await Promise.all(
+            items.map(item => addBlacklistToDb({
+                plate_number: item.plate_number,
+                reason: item.reason,
+                severity: item.severity
+            }))
+        );
 
         res.json(Array.isArray(data) ? newItems : newItems[0]);
     } catch (error) {
+        console.error('Error adding to blacklist:', error);
         res.status(500).json({ message: 'Error adding to blacklist' });
     }
 };
@@ -40,18 +40,15 @@ export const deleteBlacklist = async (req: Request, res: Response) => {
             return;
         }
 
-        const db = await getDb();
-        const initialLength = db.blacklist.length;
-        db.blacklist = db.blacklist.filter(item => item.id !== Number(id));
-
-        if (db.blacklist.length === initialLength) {
+        const deleted = await deleteBlacklistFromDb(Number(id));
+        if (!deleted) {
             res.status(404).json({ message: 'Item not found' });
             return;
         }
 
-        await saveDb(db);
         res.json({ success: true });
     } catch (error) {
+        console.error('Error deleting from blacklist:', error);
         res.status(500).json({ message: 'Error deleting from blacklist' });
     }
 };

@@ -1,13 +1,12 @@
 import { Request, Response } from 'express';
-import { getDb } from '../utils/db';
+import { getAlarms as getAlarmsFromDb } from '../utils/db';
 
 export const getAlarms = async (req: Request, res: Response) => {
     try {
-        const db = await getDb();
-        // Sort by timestamp desc
-        const alarms = [...db.alarms].sort((a, b) => b.timestamp - a.timestamp);
+        const alarms = await getAlarmsFromDb();
         res.json(alarms);
     } catch (error) {
+        console.error('Error fetching alarms:', error);
         res.status(500).json({ message: 'Error fetching alarms' });
     }
 };

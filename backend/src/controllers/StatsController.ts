@@ -1,11 +1,10 @@
 import { Request, Response } from 'express';
-import { getDb } from '../utils/db';
+import { getPlates } from '../utils/db';
 import { DashboardStats } from '../types';
 
 export const getDashboardStats = async (req: Request, res: Response) => {
     try {
-        const db = await getDb();
-        const plates = db.plates;
+        const plates = await getPlates();
 
         const total = plates.length;
         const blue = plates.filter(p => p.type === 'blue').length;
@@ -30,19 +29,17 @@ export const getDashboardStats = async (req: Request, res: Response) => {
 
         res.json(stats);
     } catch (error) {
+        console.error('Error fetching dashboard stats:', error);
         res.status(500).json({ message: 'Error fetching dashboard stats' });
     }
 };
 
 export const getDailyStats = async (req: Request, res: Response) => {
     try {
-        const db = await getDb();
         const { end } = req.query;
-        let plates = db.plates;
-
-        if (end) {
-            plates = plates.filter(p => p.timestamp <= Number(end));
-        }
+        const plates = await getPlates({
+            end: end ? Number(end) : undefined
+        });
 
         // Group by date (YYYY-MM-DD)
         const statsMap = new Map<string, number>();
@@ -65,13 +62,13 @@ export const getDailyStats = async (req: Request, res: Response) => {
         const result = Array.from(statsMap.entries()).map(([date, count]) => ({ date, count }));
         res.json(result);
     } catch (error) {
+        console.error('Error fetching daily stats:', error);
         res.status(500).json({ message: 'Error fetching daily stats' });
     }
 };
 
 export const getRegionStats = async (req: Request, res: Response) => {
     try {
-        const db = await getDb();
         const { range, date } = req.query;
         
         // Mock region stats based on location field
@@ -84,6 +81,7 @@ export const getRegionStats = async (req: Request, res: Response) => {
 
         res.json(stats);
     } catch (error) {
+        console.error('Error fetching region stats:', error);
         res.status(500).json({ message: 'Error fetching region stats' });
     }
 };

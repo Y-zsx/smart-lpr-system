@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getDb, saveDb } from '../utils/db';
+import { getPlates as getPlatesFromDb, savePlate as savePlateToDb } from '../utils/db';
 import { LicensePlate, PlateType } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
@@ -8,26 +8,17 @@ import fs from 'fs-extra';
 
 export const getPlates = async (req: Request, res: Response) => {
     try {
-        const db = await getDb();
-        let plates = db.plates;
-
         const { start, end, type } = req.query;
-
-        if (start) {
-            plates = plates.filter(p => p.timestamp >= Number(start));
-        }
-        if (end) {
-            plates = plates.filter(p => p.timestamp <= Number(end));
-        }
-        if (type) {
-            plates = plates.filter(p => p.type === type);
-        }
-
-        // Sort by timestamp desc
-        plates.sort((a, b) => b.timestamp - a.timestamp);
+        
+        const plates = await getPlatesFromDb({
+            start: start ? Number(start) : undefined,
+            end: end ? Number(end) : undefined,
+            type: type as string | undefined
+        });
 
         res.json(plates);
     } catch (error) {
+        console.error('Error fetching plates:', error);
         res.status(500).json({ message: 'Error fetching plates' });
     }
 };
@@ -35,7 +26,6 @@ export const getPlates = async (req: Request, res: Response) => {
 export const savePlate = async (req: Request, res: Response) => {
     try {
         const plateData: LicensePlate = req.body;
-        const db = await getDb();
 
         const newPlate: LicensePlate = {
             ...plateData,
@@ -44,29 +34,11 @@ export const savePlate = async (req: Request, res: Response) => {
             saved: true
         };
 
-        db.plates.push(newPlate);
-        
-        // Check blacklist logic here could be added
-        // If plate is in blacklist, create alarm
-        const blacklistItem = db.blacklist.find(b => b.plate_number === newPlate.number);
-        if (blacklistItem) {
-            db.alarms.push({
-                id: Date.now(),
-                plate_id: newPlate.id,
-                blacklist_id: blacklistItem.id,
-                timestamp: Date.now(),
-                is_read: 0,
-                plate_number: newPlate.number,
-                image_path: newPlate.imageUrl,
-                location: newPlate.location,
-                reason: `Blacklisted: ${blacklistItem.reason}`,
-                severity: blacklistItem.severity
-            });
-        }
-
-        await saveDb(db);
-        res.json(newPlate);
+        // savePlateToDb 会自动检查黑名单并创建告警
+        const savedPlate = await savePlateToDb(newPlate);
+        res.json(savedPlate);
     } catch (error) {
+        console.error('Error saving plate:', error);
         res.status(500).json({ message: 'Error saving plate' });
     }
 };

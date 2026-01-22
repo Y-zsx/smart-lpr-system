@@ -1,27 +1,21 @@
 import { Request, Response } from 'express';
-import { getDb } from '../utils/db';
+import { getPlates } from '../utils/db';
 import { stringify } from 'csv-stringify';
 
 export const exportRecords = async (req: Request, res: Response) => {
     try {
-        const db = await getDb();
-        let plates = db.plates;
         const { start, end, search } = req.query;
+        
+        let plates = await getPlates({
+            start: start ? Number(start) : undefined,
+            end: end ? Number(end) : undefined
+        });
 
-        // Filter
-        if (start) {
-            plates = plates.filter(p => p.timestamp >= Number(start));
-        }
-        if (end) {
-            plates = plates.filter(p => p.timestamp <= Number(end));
-        }
+        // 搜索过滤（MySQL 查询中也可以实现，这里保持兼容）
         if (search) {
             const searchStr = String(search).toLowerCase();
             plates = plates.filter(p => p.number.toLowerCase().includes(searchStr));
         }
-
-        // Sort
-        plates.sort((a, b) => b.timestamp - a.timestamp);
 
         // Format for CSV
         const data = plates.map(p => ({
@@ -39,6 +33,7 @@ export const exportRecords = async (req: Request, res: Response) => {
 
         stringify(data, { header: true }).pipe(res);
     } catch (error) {
+        console.error('Error exporting records:', error);
         res.status(500).send('Error exporting records');
     }
 };
