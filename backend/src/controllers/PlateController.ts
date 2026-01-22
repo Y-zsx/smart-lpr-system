@@ -2,6 +2,9 @@ import { Request, Response } from 'express';
 import { getDb, saveDb } from '../utils/db';
 import { LicensePlate, PlateType } from '../types';
 import { v4 as uuidv4 } from 'uuid';
+import axios from 'axios';
+import FormData from 'form-data';
+import fs from 'fs-extra';
 
 export const getPlates = async (req: Request, res: Response) => {
     try {
@@ -69,33 +72,58 @@ export const savePlate = async (req: Request, res: Response) => {
 };
 
 export const recognizePlate = async (req: Request, res: Response) => {
-    // Mock recognition
-    // In a real app, this would call an OCR service or run a local model
     try {
         const file = req.file; // From multer
-        
-        // Simulate processing delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        if (!file) {
+             res.status(400).json({ message: 'No file uploaded' });
+             return;
+        }
 
-        const isGreen = Math.random() > 0.7;
-        const mockPlate: LicensePlate = {
-            id: uuidv4(),
-            number: generateMockPlate(isGreen),
-            type: isGreen ? 'green' : 'blue',
-            confidence: 0.85 + Math.random() * 0.14,
-            timestamp: Date.now(),
-            rect: { x: 100, y: 100, w: 200, h: 100 },
-            saved: true,
-            location: 'Camera 1',
-            imageUrl: file ? `uploads/${file.filename}` : ''
-        };
+        // Call Python AI Service
+        try {
+            const formData = new FormData();
+            formData.append('file', fs.createReadStream(file.path));
 
-        // Save to DB automatically? Usually recognition just returns result, user confirms save.
-        // But requirement says "Save a new record" is a separate API.
-        // However, usually OCR endpoint returns the result.
-        
-        res.json(mockPlate);
+            const aiResponse = await axios.post('http://localhost:8001/recognize', formData, {
+                headers: {
+                    ...formData.getHeaders()
+                }
+            });
+
+            const aiPlates = aiResponse.data.plates;
+            
+            if (aiPlates && aiPlates.length > 0) {
+                // Use the first detected plate
+                const bestPlate = aiPlates[0];
+                
+                const plate: LicensePlate = {
+                    id: uuidv4(),
+                    number: bestPlate.number,
+                    type: bestPlate.type as PlateType,
+                    confidence: bestPlate.confidence,
+                    timestamp: Date.now(),
+                    rect: bestPlate.rect,
+                    saved: false, // Not saved to DB yet, just recognized
+                    location: 'Camera 1', // Default
+                    imageUrl: `uploads/${file.filename}`
+                };
+                
+                res.json(plate);
+                return;
+            } else {
+                 // No plates found by AI
+                 res.status(404).json({ message: 'No license plate detected' });
+                 return;
+            }
+
+        } catch (aiError) {
+            console.error('AI Service Error:', aiError);
+            res.status(503).json({ message: 'AI Service unavailable. Please ensure python service is running on port 8001.' });
+            return;
+        }
+
     } catch (error) {
+        console.error('Recognition error:', error);
         res.status(500).json({ message: 'Error recognizing plate' });
     }
 };
