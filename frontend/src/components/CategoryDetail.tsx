@@ -32,13 +32,7 @@ export const CategoryDetail: React.FC<CategoryDetailProps> = ({ type, label, onC
     }, [type]);
 
     const getImageUrl = (path?: string) => {
-        if (!path) return 'https://via.placeholder.com/400x300?text=No+Image';
-        if (path.startsWith('http')) return path;
-        // 构建完整的图片URL
-        if (path.startsWith('uploads/')) {
-            return `${apiClient.getBackendUrl()}/${path}`;
-        }
-        return path; // 如果是 base64 或 blob url
+        return apiClient.getImageUrl(path);
     };
 
     return (

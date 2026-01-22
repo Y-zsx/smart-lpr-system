@@ -191,5 +191,25 @@ export const apiClient = {
 
     getBackendUrl() {
         return BACKEND_URL;
+    },
+
+    /**
+     * 构建完整的图片URL
+     * @param path 图片路径（可能是相对路径或完整URL）
+     * @returns 完整的图片URL
+     */
+    getImageUrl(path?: string): string {
+        if (!path) return 'https://via.placeholder.com/400x300?text=No+Image';
+        if (path.startsWith('http://') || path.startsWith('https://')) return path;
+        // 如果是相对路径（uploads/开头），构建完整URL
+        if (path.startsWith('uploads/')) {
+            return `${BACKEND_URL}/${path}`;
+        }
+        // 如果是 base64 或 blob url，直接返回
+        if (path.startsWith('data:') || path.startsWith('blob:')) {
+            return path;
+        }
+        // 其他情况，尝试构建完整URL
+        return `${BACKEND_URL}/${path}`;
     }
 };

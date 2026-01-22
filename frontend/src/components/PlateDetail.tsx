@@ -98,10 +98,8 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose }) => {
                                     {record.imageUrl && (
                                         <button
                                             onClick={() => {
-                                                // 构建完整的图片URL
-                                                const imageUrl = record.imageUrl?.startsWith('http') 
-                                                    ? record.imageUrl 
-                                                    : `${apiClient.getBackendUrl()}/${record.imageUrl}`;
+                                                // 使用统一的图片URL构建方法
+                                                const imageUrl = apiClient.getImageUrl(record.imageUrl);
                                                 setSelectedImage(imageUrl);
                                             }}
                                             className="p-2 bg-white hover:bg-blue-50 rounded-lg border border-gray-200 transition-colors"

@@ -186,7 +186,7 @@ export const recognizePlate = async (req: Request, res: Response) => {
                     rect: bestPlate.rect,
                     saved: false, // Not saved to DB yet, just recognized
                     location: location || cameraName || '未知位置',
-                    imageUrl: `uploads/${file.filename}`,
+                    imageUrl: `uploads/temp/${file.filename}`,
                     cameraId: cameraId,
                     cameraName: cameraName || '未知摄像头'
                 };
