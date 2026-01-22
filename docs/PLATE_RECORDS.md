@@ -67,14 +67,14 @@ CREATE TABLE `plate_records` (
 如果是现有系统，需要执行迁移脚本：
 
 ```bash
-mysql -u root -p < backend/migrate_to_plate_records.sql
+mysql -u root -p < scripts/migrate_to_plate_records.sql
 ```
 
 或者手动执行 SQL：
 
 ```sql
 USE smart_lpr;
-SOURCE backend/migrate_to_plate_records.sql;
+SOURCE scripts/migrate_to_plate_records.sql;
 ```
 
 ### 2. 保存识别记录

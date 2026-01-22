@@ -9,7 +9,6 @@ coverage
 
 # 后端上传的临时文件和数据
 backend/uploads/
-backend/data/
 *.db
 *.sqlite
 *.sqlite3
