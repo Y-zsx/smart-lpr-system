@@ -62,7 +62,21 @@ export const recognizePlate = async (req: Request, res: Response) => {
                 }
             });
 
+            // 检查是否有错误
+            if (aiResponse.data.error) {
+                console.error('AI Service returned error:', aiResponse.data.error);
+                res.status(500).json({ 
+                    message: 'AI recognition error', 
+                    error: aiResponse.data.error 
+                });
+                return;
+            }
+
             const aiPlates = aiResponse.data.plates;
+            console.log('AI Service response:', { 
+                platesCount: aiPlates?.length || 0, 
+                plates: aiPlates 
+            });
             
             if (aiPlates && aiPlates.length > 0) {
                 // Use the first detected plate
@@ -84,7 +98,11 @@ export const recognizePlate = async (req: Request, res: Response) => {
                 return;
             } else {
                  // No plates found by AI
-                 res.status(404).json({ message: 'No license plate detected' });
+                 console.warn('No license plates detected in image:', file.filename);
+                 res.status(404).json({ 
+                     message: 'No license plate detected',
+                     suggestion: 'Please ensure the image contains a clear license plate'
+                 });
                  return;
             }
 

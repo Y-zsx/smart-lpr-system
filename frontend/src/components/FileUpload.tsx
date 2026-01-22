@@ -3,6 +3,7 @@ import { Upload, X, Image as ImageIcon, Loader2, CheckCircle, AlertCircle, Plus 
 import { plateService } from '../services/plateService';
 import { usePlateStore } from '../store/plateStore';
 import { LicensePlate } from '../types/plate';
+import { apiClient } from '../api/client';
 
 interface FileItem {
     id: string;
@@ -79,19 +80,36 @@ export const FileUpload: React.FC = () => {
                 // Use 'upload' source to skip deduplication and force save
                 const plate = await plateService.recognizeFromFile(item.file, 'upload');
 
-                if (plate.saved) {
-                    addPlate(plate);
-                    setFiles(prev => prev.map(f => f.id === item.id ? {
-                        ...f,
-                        status: 'success',
-                        result: plate
-                    } : f));
+                // 识别成功，自动保存到数据库
+                if (plate && plate.number) {
+                    try {
+                        // 保存到数据库
+                        const savedPlate = await apiClient.savePlate({
+                            ...plate,
+                            saved: true
+                        });
+                        
+                        addPlate(savedPlate);
+                        setFiles(prev => prev.map(f => f.id === item.id ? {
+                            ...f,
+                            status: 'success',
+                            result: savedPlate
+                        } : f));
+                    } catch (saveError) {
+                        console.error(`Failed to save plate for file ${item.file.name}:`, saveError);
+                        // 即使保存失败，识别也是成功的
+                        setFiles(prev => prev.map(f => f.id === item.id ? {
+                            ...f,
+                            status: 'success',
+                            result: plate
+                        } : f));
+                    }
                 } else {
-                    // Should not happen with source='upload' unless error
+                    // 识别失败：没有识别到车牌
                     setFiles(prev => prev.map(f => f.id === item.id ? {
                         ...f,
                         status: 'error',
-                        error: '保存失败'
+                        error: '未识别到车牌'
                     } : f));
                 }
             } catch (error) {

@@ -71,12 +71,49 @@ export const getRegionStats = async (req: Request, res: Response) => {
     try {
         const { range, date } = req.query;
         
-        // Mock region stats based on location field
-        // In real app, we would aggregate by location
-        const locations = ['Main Gate', 'Parking Lot A', 'Parking Lot B', 'Exit'];
-        const stats = locations.map(loc => ({
-            name: loc,
-            value: Math.floor(Math.random() * 100)
+        // 根据 range 和 date 参数获取车牌数据
+        let plates;
+        if (range === 'daily' && date) {
+            // 获取指定日期的数据
+            const startOfDay = new Date(Number(date));
+            startOfDay.setHours(0, 0, 0, 0);
+            const endOfDay = new Date(Number(date));
+            endOfDay.setHours(23, 59, 59, 999);
+            
+            plates = await getPlates({
+                start: startOfDay.getTime(),
+                end: endOfDay.getTime()
+            });
+        } else {
+            // 获取所有历史数据
+            plates = await getPlates();
+        }
+
+        // 按省份统计：提取车牌号码的第一个字符（省份简称）
+        const provinceMap = new Map<string, number>();
+        
+        plates.forEach(plate => {
+            if (plate.number && plate.number.length > 0) {
+                // 提取第一个字符作为省份简称
+                // 处理格式如 "粤R888G8" 或 "粤·R888G8"
+                const firstChar = plate.number.charAt(0);
+                // 如果是分隔符，取下一个字符
+                const province = firstChar === '·' && plate.number.length > 1 
+                    ? plate.number.charAt(1) 
+                    : firstChar;
+                
+                if (province && /[\u4e00-\u9fa5]/.test(province)) {
+                    // 确保是中文省份简称
+                    const count = provinceMap.get(province) || 0;
+                    provinceMap.set(province, count + 1);
+                }
+            }
+        });
+
+        // 转换为前端期望的格式
+        const stats = Array.from(provinceMap.entries()).map(([province, count]) => ({
+            province,
+            count
         }));
 
         res.json(stats);

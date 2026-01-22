@@ -8,9 +8,9 @@ export const SystemStatus: React.FC = () => {
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     const checkHealth = async () => {
-        // Check AI Backend
+        // Check AI Backend (Python service on port 8001)
         try {
-            const res = await fetch('http://localhost:8000/health');
+            const res = await fetch('http://localhost:8001/health');
             if (res.ok) setAiStatus('online');
             else setAiStatus('offline');
         } catch (e) {

@@ -38,7 +38,7 @@ export const getPlates = async (filters?: {
 
     const [rows] = await connection.execute<RowDataPacket[]>(query, params);
     
-    return rows.map(row => ({
+    return rows.map((row: RowDataPacket) => ({
       id: row.id,
       number: row.number,
       type: row.type,
@@ -146,7 +146,7 @@ export const getBlacklist = async (): Promise<BlacklistItem[]> => {
       'SELECT * FROM `blacklist` ORDER BY `created_at` DESC'
     );
     
-    return rows.map(row => ({
+    return rows.map((row: RowDataPacket) => ({
       id: row.id,
       plate_number: row.plate_number,
       reason: row.reason,
@@ -208,7 +208,7 @@ export const getAlarms = async (): Promise<Alarm[]> => {
       'SELECT * FROM `alarms` ORDER BY `timestamp` DESC'
     );
     
-    return rows.map(row => ({
+    return rows.map((row: RowDataPacket) => ({
       id: row.id,
       plate_id: row.plate_id || undefined,
       blacklist_id: row.blacklist_id || undefined,
