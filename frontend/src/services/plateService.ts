@@ -22,12 +22,13 @@ export const plateService = {
         formData.append('source', source);
 
         try {
+            const headers = getHeaders();
+            // Remove Content-Type to let browser set it with boundary for FormData
+            delete headers['Content-Type'];
+
             const res = await fetch(`${BACKEND_URL}/api/recognize`, {
                 method: 'POST',
-                headers: {
-                    // 不要给 FormData 设置 Content-Type，浏览器会自动设置 boundary
-                    ...getHeaders()
-                },
+                headers: headers,
                 body: formData
             });
 
