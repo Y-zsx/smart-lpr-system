@@ -1,16 +1,17 @@
 import { Request, Response } from 'express';
-import { getPlates } from '../utils/db';
+import { getPlates, getPlateGroups } from '../utils/db';
 import { DashboardStats } from '../types';
 
 export const getDashboardStats = async (req: Request, res: Response) => {
     try {
-        const allPlates = await getPlates();
-
-        // 计算当前总数
-        const total = allPlates.length;
-        const blue = allPlates.filter(p => p.type === 'blue').length;
-        const green = allPlates.filter(p => p.type === 'green').length;
-        const yellow = allPlates.filter(p => p.type === 'yellow').length;
+        // 使用新的分组查询，统计不重复的车牌号
+        const allGroups = await getPlateGroups();
+        
+        // 计算当前总数（不重复的车牌数）
+        const total = allGroups.length;
+        const blue = allGroups.filter(g => g.plateType === 'blue').length;
+        const green = allGroups.filter(g => g.plateType === 'green').length;
+        const yellow = allGroups.filter(g => g.plateType === 'yellow').length;
         const other = total - blue - green - yellow;
 
         // 计算趋势：比较今天和昨天的数据
@@ -22,26 +23,26 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         const yesterdayEnd = new Date(todayEnd);
         yesterdayEnd.setDate(yesterdayEnd.getDate() - 1);
 
-        // 获取今天的数据
-        const todayPlates = allPlates.filter(p => {
-            const timestamp = new Date(p.timestamp);
-            return timestamp >= todayStart && timestamp <= todayEnd;
+        // 获取今天的数据（不重复车牌）
+        const todayGroups = await getPlateGroups({
+            start: todayStart.getTime(),
+            end: todayEnd.getTime()
         });
-        const todayTotal = todayPlates.length;
-        const todayBlue = todayPlates.filter(p => p.type === 'blue').length;
-        const todayGreen = todayPlates.filter(p => p.type === 'green').length;
-        const todayYellow = todayPlates.filter(p => p.type === 'yellow').length;
+        const todayTotal = todayGroups.length;
+        const todayBlue = todayGroups.filter(g => g.plateType === 'blue').length;
+        const todayGreen = todayGroups.filter(g => g.plateType === 'green').length;
+        const todayYellow = todayGroups.filter(g => g.plateType === 'yellow').length;
         const todayOther = todayTotal - todayBlue - todayGreen - todayYellow;
 
-        // 获取昨天的数据
-        const yesterdayPlates = allPlates.filter(p => {
-            const timestamp = new Date(p.timestamp);
-            return timestamp >= yesterdayStart && timestamp <= yesterdayEnd;
+        // 获取昨天的数据（不重复车牌）
+        const yesterdayGroups = await getPlateGroups({
+            start: yesterdayStart.getTime(),
+            end: yesterdayEnd.getTime()
         });
-        const yesterdayTotal = yesterdayPlates.length;
-        const yesterdayBlue = yesterdayPlates.filter(p => p.type === 'blue').length;
-        const yesterdayGreen = yesterdayPlates.filter(p => p.type === 'green').length;
-        const yesterdayYellow = yesterdayPlates.filter(p => p.type === 'yellow').length;
+        const yesterdayTotal = yesterdayGroups.length;
+        const yesterdayBlue = yesterdayGroups.filter(g => g.plateType === 'blue').length;
+        const yesterdayGreen = yesterdayGroups.filter(g => g.plateType === 'green').length;
+        const yesterdayYellow = yesterdayGroups.filter(g => g.plateType === 'yellow').length;
         const yesterdayOther = yesterdayTotal - yesterdayBlue - yesterdayGreen - yesterdayYellow;
 
         // 计算趋势百分比
@@ -88,27 +89,34 @@ export const getDashboardStats = async (req: Request, res: Response) => {
 export const getDailyStats = async (req: Request, res: Response) => {
     try {
         const { end } = req.query;
-        const plates = await getPlates({
-            end: end ? Number(end) : undefined
-        });
-
-        // Group by date (YYYY-MM-DD)
+        
+        // 获取最近7天的分组数据
+        const endDate = end ? new Date(Number(end)) : new Date();
         const statsMap = new Map<string, number>();
         
         // Initialize last 7 days with 0
         for (let i = 6; i >= 0; i--) {
-            const d = new Date();
+            const d = new Date(endDate);
             d.setDate(d.getDate() - i);
             const dateStr = d.toISOString().split('T')[0];
             statsMap.set(dateStr, 0);
-        }
-
-        plates.forEach(p => {
-            const dateStr = new Date(p.timestamp).toISOString().split('T')[0];
-            if (statsMap.has(dateStr)) {
-                statsMap.set(dateStr, statsMap.get(dateStr)! + 1);
+            
+            // 获取当天的分组数据（不重复车牌数）
+            const dayStart = new Date(d);
+            dayStart.setHours(0, 0, 0, 0);
+            const dayEnd = new Date(d);
+            dayEnd.setHours(23, 59, 59, 999);
+            
+            try {
+                const dayGroups = await getPlateGroups({
+                    start: dayStart.getTime(),
+                    end: dayEnd.getTime()
+                });
+                statsMap.set(dateStr, dayGroups.length);
+            } catch (error) {
+                console.warn(`获取 ${dateStr} 的数据失败:`, error);
             }
-        });
+        }
 
         const result = Array.from(statsMap.entries()).map(([date, count]) => ({ date, count }));
         res.json(result);
@@ -122,8 +130,8 @@ export const getRegionStats = async (req: Request, res: Response) => {
     try {
         const { range, date } = req.query;
         
-        // 根据 range 和 date 参数获取车牌数据
-        let plates;
+        // 根据 range 和 date 参数获取车牌分组数据
+        let groups;
         if (range === 'daily' && date) {
             // 获取指定日期的数据
             const startOfDay = new Date(Number(date));
@@ -131,30 +139,32 @@ export const getRegionStats = async (req: Request, res: Response) => {
             const endOfDay = new Date(Number(date));
             endOfDay.setHours(23, 59, 59, 999);
             
-            plates = await getPlates({
+            groups = await getPlateGroups({
                 start: startOfDay.getTime(),
                 end: endOfDay.getTime()
             });
         } else {
             // 获取所有历史数据
-            plates = await getPlates();
+            groups = await getPlateGroups();
         }
 
         // 按省份统计：提取车牌号码的第一个字符（省份简称）
+        // 使用分组数据，每个车牌号只统计一次（不重复）
         const provinceMap = new Map<string, number>();
         
-        plates.forEach(plate => {
-            if (plate.number && plate.number.length > 0) {
+        groups.forEach(group => {
+            if (group.plateNumber && group.plateNumber.length > 0) {
                 // 提取第一个字符作为省份简称
                 // 处理格式如 "粤R888G8" 或 "粤·R888G8"
-                const firstChar = plate.number.charAt(0);
+                const firstChar = group.plateNumber.charAt(0);
                 // 如果是分隔符，取下一个字符
-                const province = firstChar === '·' && plate.number.length > 1 
-                    ? plate.number.charAt(1) 
+                const province = firstChar === '·' && group.plateNumber.length > 1 
+                    ? group.plateNumber.charAt(1) 
                     : firstChar;
                 
                 if (province && /[\u4e00-\u9fa5]/.test(province)) {
                     // 确保是中文省份简称
+                    // 每个车牌号只计数一次（不重复）
                     const count = provinceMap.get(province) || 0;
                     provinceMap.set(province, count + 1);
                 }

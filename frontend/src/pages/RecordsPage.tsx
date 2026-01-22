@@ -8,31 +8,12 @@ export const RecordsPage: React.FC = () => {
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const { setPlates } = usePlateStore();
 
+    // 注意：RecordsPage 不再需要 setPlates，因为 PlateList 组件会自己获取数据
+    // 保留这个 useEffect 用于兼容性，但不再使用
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                const start = new Date(selectedDate).setHours(0, 0, 0, 0);
-                const end = new Date(selectedDate).setHours(23, 59, 59, 999);
-                
-                const plates = await apiClient.getHistory(start, end);
-                setPlates(plates);
-            } catch (e) {
-                console.error("Failed to fetch history:", e);
-            }
-        };
-
-        fetchData();
-        const isToday = selectedDate === new Date().toISOString().split('T')[0];
-        let interval: number;
-
-        if (isToday) {
-            interval = window.setInterval(fetchData, 5000);
-        }
-
-        return () => {
-            if (interval) clearInterval(interval);
-        };
-    }, [selectedDate, setPlates]);
+        // PlateList 组件会自己获取分组数据
+        // 这里可以留空或用于其他用途
+    }, [selectedDate]);
 
     return (
         <div className="flex flex-col h-[calc(100vh-140px)] space-y-4">

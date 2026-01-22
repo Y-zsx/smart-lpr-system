@@ -30,14 +30,31 @@ export const usePlateStore = create<PlateStore>((set) => ({
         isDemoMode: false,
     },
     setPlates: (plates) => set((state) => {
-        const baseStats = plates.reduce((acc, plate) => {
-            acc.total++;
-            if (plate.type === 'blue') acc.blue++;
-            else if (plate.type === 'green') acc.green++;
-            else if (plate.type === 'yellow') acc.yellow++;
-            else acc.other++;
-            return acc;
-        }, { total: 0, blue: 0, green: 0, yellow: 0, other: 0 });
+        // 检查是否是分组数据（PlateGroup[]）
+        const isGroupData = Array.isArray(plates) && plates.length > 0 && 'plateNumber' in plates[0] && 'records' in plates[0];
+        
+        let baseStats;
+        if (isGroupData) {
+            // 从分组数据计算统计（不重复车牌数）
+            baseStats = (plates as any[]).reduce((acc, group) => {
+                acc.total++;
+                if (group.plateType === 'blue') acc.blue++;
+                else if (group.plateType === 'green') acc.green++;
+                else if (group.plateType === 'yellow') acc.yellow++;
+                else acc.other++;
+                return acc;
+            }, { total: 0, blue: 0, green: 0, yellow: 0, other: 0 });
+        } else {
+            // 从单条记录计算统计（兼容旧数据）
+            baseStats = (plates as any[]).reduce((acc, plate) => {
+                acc.total++;
+                if (plate.type === 'blue') acc.blue++;
+                else if (plate.type === 'green') acc.green++;
+                else if (plate.type === 'yellow') acc.yellow++;
+                else acc.other++;
+                return acc;
+            }, { total: 0, blue: 0, green: 0, yellow: 0, other: 0 });
+        }
 
         // 保留现有的 trends 数据
         const stats = {

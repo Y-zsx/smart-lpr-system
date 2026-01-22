@@ -27,7 +27,7 @@ export const apiClient = {
         return res.json();
     },
 
-    async getHistory(start?: number, end?: number, type?: string) {
+    async getHistory(start?: number, end?: number, type?: string, groupBy?: string) {
         let url = `${BACKEND_URL}/api/plates`;
         const params = new URLSearchParams();
 
@@ -38,6 +38,10 @@ export const apiClient = {
 
         if (type) {
             params.append('type', type);
+        }
+
+        if (groupBy) {
+            params.append('groupBy', groupBy);
         }
 
         const queryString = params.toString();

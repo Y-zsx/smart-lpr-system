@@ -3,6 +3,7 @@ import { Camera, CameraOff, Video as VideoIcon, VideoOff, AlertTriangle } from '
 import { usePlateStore } from '../store/plateStore';
 import { useCameraStore } from '../store/cameraStore';
 import { plateService } from '../services/plateService';
+import { apiClient } from '../api/client';
 import { Rect } from '../types/plate';
 import { hapticFeedback } from '../utils/mobileFeatures';
 
@@ -10,17 +11,21 @@ export const CameraView: React.FC = () => {
     const containerRef = useRef<HTMLDivElement>(null);
     const videoRef = useRef<HTMLVideoElement>(null);
     const remoteVideoRef = useRef<HTMLImageElement>(null);
+    const fileVideoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const [error, setError] = useState<string>('');
     const [hasPermission, setHasPermission] = useState<boolean>(false);
     const [detectedRect, setDetectedRect] = useState<Rect | null>(null);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+    const mjpegRefreshIntervalRef = useRef<number | null>(null);
+    const healthCheckIntervalRef = useRef<number | null>(null);
 
     const { isScanning, setScanning, addPlate, settings } = usePlateStore();
     const { cameras, selectedCameraId, updateCameraStatus } = useCameraStore();
 
     const currentCamera = cameras.find(c => c.id === selectedCameraId) || cameras[0];
-    const isLocal = currentCamera.type === 'local';
+    const isLocal = currentCamera?.type === 'local';
+    const isFile = currentCamera?.type === 'file';
 
     const scanIntervalRef = useRef<number | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
@@ -44,17 +49,126 @@ export const CameraView: React.FC = () => {
     }, []);
 
     const startCamera = async () => {
-        if (!isLocal) {
-            setHasPermission(true);
-            setError('');
-            updateCameraStatus(currentCamera.id, 'online');
+        if (isFile) {
+            // 视频文件模式 - 确保视频有 src 并开始播放
+            if (fileVideoRef.current && currentCamera?.url) {
+                const video = fileVideoRef.current;
+                
+                // 确保 src 已设置
+                if (!video.src || video.src !== currentCamera.url) {
+                    console.log('设置视频 src:', currentCamera.url.substring(0, 50));
+                    video.src = currentCamera.url;
+                    video.load();
+                }
+                
+                try {
+                    // 如果视频已经加载，尝试播放
+                    if (video.readyState >= 2) {
+                        await video.play();
+                        console.log('视频文件播放成功');
+                        setHasPermission(true);
+                        setError('');
+                        updateCameraStatus(currentCamera.id, 'online');
+                    } else {
+                        // 视频还在加载，等待加载完成
+                        console.log('视频还在加载，等待 readyState >= 2, 当前:', video.readyState);
+                        const playWhenReady = () => {
+                            video.play().then(() => {
+                                console.log('视频加载完成后播放成功');
+                                setHasPermission(true);
+                                setError('');
+                                updateCameraStatus(currentCamera.id, 'online');
+                            }).catch(err => {
+                                console.error('播放视频文件失败:', err);
+                                setError('无法播放视频文件，请检查文件格式');
+                                setHasPermission(false);
+                            });
+                        };
+                        
+                        if (video.readyState >= 1) {
+                            // 已经有元数据，等待可以播放
+                            video.addEventListener('canplay', playWhenReady, { once: true });
+                        } else {
+                            // 等待元数据加载
+                            video.addEventListener('loadedmetadata', () => {
+                                video.addEventListener('canplay', playWhenReady, { once: true });
+                            }, { once: true });
+                        }
+                    }
+                } catch (err) {
+                    console.error('播放视频文件失败:', err);
+                    setError('无法播放视频文件，请检查文件格式');
+                    setHasPermission(false);
+                    updateCameraStatus(currentCamera.id, 'offline');
+                }
+            } else {
+                console.warn('视频元素或 URL 未准备好:', {
+                    hasRef: !!fileVideoRef.current,
+                    hasUrl: !!currentCamera?.url,
+                    url: currentCamera?.url?.substring(0, 50)
+                });
+            }
             return;
         }
 
+        if (!isLocal) {
+            // 远程流模式 - MJPEG 轮询刷新
+            setHasPermission(true);
+            setError('');
+            updateCameraStatus(currentCamera.id, 'online');
+            
+            // 对于 MJPEG 流，定期刷新图片以获取最新帧
+            if (currentCamera.url && remoteVideoRef.current) {
+                let errorCount = 0;
+                const refreshMjpeg = () => {
+                    if (remoteVideoRef.current && currentCamera.url) {
+                        // 添加时间戳避免缓存
+                        const separator = currentCamera.url.includes('?') ? '&' : '?';
+                        remoteVideoRef.current.src = `${currentCamera.url}${separator}_t=${Date.now()}`;
+                    }
+                };
+                
+                // 监听图片加载错误
+                const handleImageError = () => {
+                    errorCount++;
+                    if (errorCount > 5) {
+                        updateCameraStatus(currentCamera.id, 'offline');
+                        setError('摄像头连接失败，请检查网络或流地址');
+                    }
+                };
+                
+                const handleImageLoad = () => {
+                    errorCount = 0;
+                    updateCameraStatus(currentCamera.id, 'online');
+                };
+                
+                if (remoteVideoRef.current) {
+                    remoteVideoRef.current.onerror = handleImageError;
+                    remoteVideoRef.current.onload = handleImageLoad;
+                }
+                
+                refreshMjpeg();
+                mjpegRefreshIntervalRef.current = window.setInterval(refreshMjpeg, 100); // 每100ms刷新一次
+                
+                // 健康检查：每5秒检查一次连接状态
+                healthCheckIntervalRef.current = window.setInterval(() => {
+                    if (errorCount > 10) {
+                        updateCameraStatus(currentCamera.id, 'offline');
+                    }
+                }, 5000);
+            }
+            return;
+        }
+
+        // 本地摄像头模式
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'environment' }
-            });
+            const constraints: MediaStreamConstraints = {
+                video: currentCamera.deviceId 
+                    ? { deviceId: { exact: currentCamera.deviceId } }
+                    : { facingMode: 'environment' }
+            };
+
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
             streamRef.current = stream;
             setHasPermission(true);
@@ -72,7 +186,7 @@ export const CameraView: React.FC = () => {
         if (isLocal && hasPermission && videoRef.current && streamRef.current) {
             videoRef.current.srcObject = streamRef.current;
         }
-    }, [hasPermission, isLocal, currentCamera.id]);
+    }, [hasPermission, isLocal, currentCamera.id, currentCamera.deviceId]);
 
     const stopCamera = () => {
         if (streamRef.current) {
@@ -82,7 +196,25 @@ export const CameraView: React.FC = () => {
         if (videoRef.current) {
             videoRef.current.srcObject = null;
         }
-        if (isLocal) {
+        // 注意：不要清空视频文件的 src，否则会导致错误
+        // 视频文件应该保持 src，只暂停播放
+        if (fileVideoRef.current && !isFile) {
+            // 只有在不是视频文件模式时才清空
+            fileVideoRef.current.pause();
+            fileVideoRef.current.src = '';
+        } else if (fileVideoRef.current && isFile) {
+            // 视频文件模式：只暂停，不清空 src
+            fileVideoRef.current.pause();
+        }
+        if (mjpegRefreshIntervalRef.current) {
+            clearInterval(mjpegRefreshIntervalRef.current);
+            mjpegRefreshIntervalRef.current = null;
+        }
+        if (healthCheckIntervalRef.current) {
+            clearInterval(healthCheckIntervalRef.current);
+            healthCheckIntervalRef.current = null;
+        }
+        if (isLocal || isFile) {
             setHasPermission(false);
         }
     };
@@ -119,22 +251,34 @@ export const CameraView: React.FC = () => {
 
         let sourceElement: HTMLVideoElement | HTMLImageElement | null = null;
 
-        if (isLocal) {
-            sourceElement = videoRef.current;
+        if (isLocal || isFile) {
+            sourceElement = isFile ? fileVideoRef.current : videoRef.current;
         } else {
             sourceElement = remoteVideoRef.current;
         }
 
         if (!sourceElement || !canvasRef.current) return;
 
+        // 对于视频元素，确保已加载并可以播放
+        if ((isLocal || isFile) && sourceElement instanceof HTMLVideoElement) {
+            if (sourceElement.readyState < 2) {
+                // 视频还没准备好，等待一下
+                return;
+            }
+        }
+
         const canvas = canvasRef.current;
         const context = canvas.getContext('2d', { willReadFrequently: true });
         if (!context) return;
 
-        const width = isLocal ? (sourceElement as HTMLVideoElement).videoWidth : (sourceElement as HTMLImageElement).naturalWidth;
-        const height = isLocal ? (sourceElement as HTMLVideoElement).videoHeight : (sourceElement as HTMLImageElement).naturalHeight;
+        const width = (isLocal || isFile) 
+            ? (sourceElement as HTMLVideoElement).videoWidth 
+            : (sourceElement as HTMLImageElement).naturalWidth;
+        const height = (isLocal || isFile) 
+            ? (sourceElement as HTMLVideoElement).videoHeight 
+            : (sourceElement as HTMLImageElement).naturalHeight;
 
-        if (!width || !height) return;
+        if (!width || !height || width === 0 || height === 0) return;
 
         if (canvas.width !== width || canvas.height !== height) {
             canvas.width = width;
@@ -151,7 +295,14 @@ export const CameraView: React.FC = () => {
             canvas.toBlob(async (blob) => {
                 if (blob) {
                     try {
-                        const plate = await plateService.recognizeFromFile(blob, 'stream');
+                        // 传递摄像头信息
+                        const plate = await plateService.recognizeFromFile(
+                            blob, 
+                            'stream',
+                            currentCamera.id,
+                            currentCamera.name,
+                            currentCamera.location || currentCamera.name
+                        );
 
                         if (plate && plate.confidence >= settings.confidenceThreshold) {
                             if (plate.rect) {
@@ -159,7 +310,42 @@ export const CameraView: React.FC = () => {
                                 setTimeout(() => setDetectedRect(null), 2000);
                             }
 
-                            if (plate.saved) {
+                            // 自动保存识别记录到数据库
+                            console.log('识别成功，准备保存:', {
+                                plateNumber: plate.number,
+                                confidence: plate.confidence,
+                                saved: plate.saved,
+                                cameraId: currentCamera.id,
+                                cameraName: currentCamera.name
+                            });
+                            
+                            if (!plate.saved) {
+                                try {
+                                    const plateToSave = {
+                                        ...plate,
+                                        cameraId: currentCamera.id,
+                                        cameraName: currentCamera.name,
+                                        location: currentCamera.location || currentCamera.name,
+                                        saved: true
+                                    };
+                                    console.log('保存识别记录到数据库:', plateToSave);
+                                    
+                                    const savedPlate = await apiClient.savePlate(plateToSave);
+                                    console.log('保存成功:', savedPlate);
+                                    
+                                    addPlate(savedPlate);
+                                    if (settings.enableHaptics) hapticFeedback('heavy');
+                                } catch (saveError) {
+                                    console.error('保存识别记录失败:', saveError);
+                                    console.error('错误详情:', {
+                                        error: saveError,
+                                        plate: plate
+                                    });
+                                    // 即使保存失败，也显示识别结果
+                                    addPlate(plate);
+                                }
+                            } else {
+                                console.log('识别记录已保存，直接添加到列表');
                                 addPlate(plate);
                                 if (settings.enableHaptics) hapticFeedback('heavy');
                             }
@@ -178,14 +364,71 @@ export const CameraView: React.FC = () => {
         return () => {
             stopCamera();
             if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
+            if (mjpegRefreshIntervalRef.current) clearInterval(mjpegRefreshIntervalRef.current);
+            if (healthCheckIntervalRef.current) clearInterval(healthCheckIntervalRef.current);
         };
     }, [currentCamera.id]);
 
+    // 摄像头切换时，如果是视频文件，立即加载预览
+    useEffect(() => {
+        console.log('摄像头切换 effect:', {
+            isFile,
+            cameraId: currentCamera?.id,
+            cameraName: currentCamera?.name,
+            hasUrl: !!currentCamera?.url,
+            url: currentCamera?.url?.substring(0, 50)
+        });
+        
+        // 停止之前的摄像头
+        if (!isFile) {
+            stopCamera();
+        } else if (fileVideoRef.current) {
+            // 视频文件模式：暂停播放
+            fileVideoRef.current.pause();
+        }
+        
+        // 如果是视频文件，直接设置 src 并加载
+        if (isFile && currentCamera?.url && fileVideoRef.current) {
+            console.log('设置视频文件 src:', {
+                name: currentCamera.name,
+                url: currentCamera.url.substring(0, 50),
+                fullUrl: currentCamera.url,
+                hasRef: !!fileVideoRef.current
+            });
+            
+            // 直接设置 src，确保视频元素有正确的 URL
+            const video = fileVideoRef.current;
+            if (video.src !== currentCamera.url) {
+                video.src = currentCamera.url;
+                video.load(); // 强制重新加载
+                
+                // 尝试播放
+                video.play().then(() => {
+                    console.log('视频播放成功');
+                    setHasPermission(true);
+                    setError('');
+                    updateCameraStatus(currentCamera.id, 'online');
+                }).catch(err => {
+                    console.error('自动播放失败（可能需要用户交互）:', err);
+                    // 不设置错误，等待用户点击播放或开启识别
+                });
+            }
+            
+            setHasPermission(false); // 重置状态，等待视频加载
+            setError('');
+        } else if (!isLocal && !isFile && currentCamera?.url) {
+            // 网络流也需要立即加载预览
+            setHasPermission(true);
+            updateCameraStatus(currentCamera.id, 'online');
+        } else if (isFile && !currentCamera?.url) {
+            console.warn('视频文件摄像头没有 URL:', currentCamera);
+            setError('视频文件 URL 缺失，请重新添加视频文件');
+        }
+    }, [currentCamera.id, currentCamera.url, isFile, isLocal, currentCamera.name]);
+
     useEffect(() => {
         if (isScanning) {
-            if (isLocal && !streamRef.current) {
-                startCamera();
-            } else if (!isLocal) {
+            if ((isLocal && !streamRef.current) || (!isLocal && !isFile) || (isFile && !hasPermission)) {
                 startCamera();
             }
 
@@ -195,10 +438,13 @@ export const CameraView: React.FC = () => {
                 clearInterval(scanIntervalRef.current);
                 scanIntervalRef.current = null;
             }
-            stopCamera();
+            // 视频文件模式不停止预览，只停止识别
+            if (!isFile) {
+                stopCamera();
+            }
             setDetectedRect(null);
         }
-    }, [isScanning, currentCamera.id, settings.scanInterval]);
+    }, [isScanning, currentCamera.id, currentCamera.deviceId, settings.scanInterval, isFile, hasPermission]);
 
     const toggleScanning = () => {
         if (settings.enableHaptics) hapticFeedback('medium');
@@ -213,7 +459,10 @@ export const CameraView: React.FC = () => {
         if (isLocal && videoRef.current) {
             sourceWidth = videoRef.current.videoWidth || 1;
             sourceHeight = videoRef.current.videoHeight || 1;
-        } else if (!isLocal && remoteVideoRef.current) {
+        } else if (isFile && fileVideoRef.current) {
+            sourceWidth = fileVideoRef.current.videoWidth || 1;
+            sourceHeight = fileVideoRef.current.videoHeight || 1;
+        } else if (!isLocal && !isFile && remoteVideoRef.current) {
             sourceWidth = remoteVideoRef.current.naturalWidth || 1;
             sourceHeight = remoteVideoRef.current.naturalHeight || 1;
         }
@@ -242,7 +491,98 @@ export const CameraView: React.FC = () => {
     return (
         <div ref={containerRef} className="relative w-full h-full bg-black rounded-xl overflow-hidden shadow-lg border border-gray-800 flex flex-col">
             <div className="relative flex-1 bg-black overflow-hidden group">
-                {hasPermission ? (
+                {isFile ? (
+                    // 视频文件模式：始终渲染，不依赖 hasPermission
+                    currentCamera?.url ? (
+                        <video
+                            ref={fileVideoRef}
+                            key={`${currentCamera.id}-${currentCamera.url?.substring(0, 20)}`} // 添加 key 确保摄像头切换时重新渲染
+                            autoPlay
+                            playsInline
+                            muted
+                            loop
+                            preload="auto"
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                                    console.error('视频播放错误:', e);
+                                    const video = e.currentTarget;
+                                    const error = video.error;
+                                    let errorMsg = '无法播放视频文件';
+                                    
+                                    if (error) {
+                                        console.error('视频错误详情:', {
+                                            code: error.code,
+                                            message: error.message
+                                        });
+                                        switch (error.code) {
+                                            case error.MEDIA_ERR_ABORTED:
+                                                errorMsg = '视频播放被中止';
+                                                break;
+                                            case error.MEDIA_ERR_NETWORK:
+                                                errorMsg = '网络错误，请检查文件是否有效';
+                                                break;
+                                            case error.MEDIA_ERR_DECODE:
+                                                errorMsg = '视频解码失败，请检查文件格式';
+                                                break;
+                                            case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                                                errorMsg = '视频格式不支持，请使用 MP4 或 WebM 格式';
+                                                break;
+                                            default:
+                                                errorMsg = `视频文件可能已失效 (错误码: ${error.code})，请重新选择文件`;
+                                        }
+                                    } else {
+                                        errorMsg = '无法播放视频文件，请检查文件格式或重新选择';
+                                    }
+                                    
+                                    setError(errorMsg);
+                                    setHasPermission(false);
+                                    updateCameraStatus(currentCamera.id, 'offline');
+                                }}
+                                onLoadedMetadata={() => {
+                                    console.log('视频元数据加载完成');
+                                    // 视频元数据加载完成，确保可以播放
+                                    if (fileVideoRef.current && currentCamera.url) {
+                                        setHasPermission(true);
+                                        setError('');
+                                        updateCameraStatus(currentCamera.id, 'online');
+                                    }
+                                }}
+                                onCanPlay={() => {
+                                    console.log('视频可以播放');
+                                    // 视频可以播放时，确保状态正确
+                                    if (fileVideoRef.current && currentCamera.url) {
+                                        setHasPermission(true);
+                                        setError('');
+                                        updateCameraStatus(currentCamera.id, 'online');
+                                    }
+                                }}
+                                onPlay={() => {
+                                    console.log('视频开始播放');
+                                    setHasPermission(true);
+                                    setError('');
+                                    updateCameraStatus(currentCamera.id, 'online');
+                                }}
+                                onLoadStart={() => {
+                                    console.log('视频开始加载:', {
+                                        url: currentCamera.url?.substring(0, 50),
+                                        cameraId: currentCamera.id,
+                                        cameraName: currentCamera.name,
+                                        hasRef: !!fileVideoRef.current,
+                                        videoSrc: fileVideoRef.current?.src?.substring(0, 50)
+                                    });
+                                }}
+                                onLoadedData={() => {
+                                    console.log('视频数据加载完成');
+                                }}
+                            />
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                                <AlertTriangle size={48} className="mb-4 text-yellow-500" />
+                                <p>未配置视频文件</p>
+                                <p className="text-sm mt-2 text-gray-400">请重新添加视频文件</p>
+                            </div>
+                        )
+                ) : hasPermission ? (
                     isLocal ? (
                         <video
                             ref={videoRef}
@@ -273,8 +613,15 @@ export const CameraView: React.FC = () => {
                 ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center text-gray-500">
                         <VideoOff size={48} className="mb-4 opacity-50" />
-                        <p>{isLocal ? '摄像头已关闭' : '远程监控已暂停'}</p>
-                        <p className="text-sm mt-2">点击下方按钮开启识别</p>
+                        <p>{isLocal ? '摄像头已关闭' : isFile ? '视频文件未加载' : '远程监控已暂停'}</p>
+                        {isFile && currentCamera?.url && (
+                            <p className="text-sm mt-2 text-yellow-600">
+                                提示：如果视频文件无法播放，可能是文件已失效，请重新添加视频文件
+                            </p>
+                        )}
+                        {!isFile && (
+                            <p className="text-sm mt-2">点击下方按钮开启识别</p>
+                        )}
                     </div>
                 )}
                 <canvas ref={canvasRef} className="hidden" />

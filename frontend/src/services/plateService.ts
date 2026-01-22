@@ -8,9 +8,18 @@ export const plateService = {
      * 上传图片文件或 Blob 对象进行车牌识别
      * @param file 要识别的图片文件或 Blob 对象
      * @param source 图片来源 ('stream' | 'upload')
+     * @param cameraId 摄像头ID（可选）
+     * @param cameraName 摄像头名称（可选）
+     * @param location 位置信息（可选）
      * @returns 返回识别结果的 Promise
      */
-    recognizeFromFile: async (file: Blob, source: string): Promise<LicensePlate> => {
+    recognizeFromFile: async (
+        file: Blob, 
+        source: string,
+        cameraId?: string,
+        cameraName?: string,
+        location?: string
+    ): Promise<LicensePlate> => {
         // 根据环境变量判断是否使用模拟数据
         if (import.meta.env.VITE_USE_MOCK === 'true') {
             console.log('正在使用模拟识别服务 (VITE_USE_MOCK=true)');
@@ -20,6 +29,9 @@ export const plateService = {
         const formData = new FormData();
         formData.append('file', file);
         formData.append('source', source);
+        if (cameraId) formData.append('cameraId', cameraId);
+        if (cameraName) formData.append('cameraName', cameraName);
+        if (location) formData.append('location', location);
 
         try {
             const headers = getHeaders();

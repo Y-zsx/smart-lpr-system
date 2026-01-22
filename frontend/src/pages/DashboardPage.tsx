@@ -20,15 +20,16 @@ export const DashboardPage: React.FC = () => {
                 const start = new Date(selectedDate).setHours(0, 0, 0, 0);
                 const end = new Date(selectedDate).setHours(23, 59, 59, 999);
                 
-                const [plates, dashboardStats] = await Promise.all([
-                    apiClient.getHistory(start, end),
+                const [groups, dashboardStats] = await Promise.all([
+                    apiClient.getHistory(start, end, undefined, 'plate'), // 使用分组查询
                     apiClient.getDashboardStats().catch(err => {
                         console.warn("Failed to fetch dashboard stats:", err);
                         return null;
                     })
                 ]);
 
-                setPlates(plates);
+                // setPlates 现在可以处理分组数据
+                setPlates(groups);
                 if (dashboardStats && dashboardStats.trends) {
                     setTrends(dashboardStats.trends);
                 }

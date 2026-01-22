@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import { getPlates as getPlatesFromDb, savePlate as savePlateToDb } from '../utils/db';
-import { LicensePlate, PlateType } from '../types';
+import { getPlates as getPlatesFromDb, savePlate as savePlateToDb, savePlateRecord, getPlateGroups } from '../utils/db';
+import { LicensePlate, PlateType, PlateRecord } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import FormData from 'form-data';
@@ -8,15 +8,66 @@ import fs from 'fs-extra';
 
 export const getPlates = async (req: Request, res: Response) => {
     try {
-        const { start, end, type } = req.query;
+        const { start, end, type, plateNumber, groupBy } = req.query;
         
-        const plates = await getPlatesFromDb({
-            start: start ? Number(start) : undefined,
-            end: end ? Number(end) : undefined,
-            type: type as string | undefined
-        });
-
-        res.json(plates);
+        // 如果指定了 groupBy=plate，使用新的分组查询
+        if (groupBy === 'plate') {
+            const groups = await getPlateGroups({
+                start: start ? Number(start) : undefined,
+                end: end ? Number(end) : undefined,
+                type: type as string | undefined,
+                plateNumber: plateNumber as string | undefined
+            });
+            res.json(groups);
+            return;
+        }
+        
+        // 默认从 plate_records 表查询（新数据）
+        // 同时兼容查询旧的 plates 表
+        try {
+            // 先尝试从 plate_records 表查询
+            const groups = await getPlateGroups({
+                start: start ? Number(start) : undefined,
+                end: end ? Number(end) : undefined,
+                type: type as string | undefined,
+                plateNumber: plateNumber as string | undefined
+            });
+            
+            // 将分组数据转换为单条记录列表（兼容旧接口）
+            const records: LicensePlate[] = [];
+            for (const group of groups) {
+                for (const record of group.records) {
+                    records.push({
+                        id: record.id,
+                        number: record.plateNumber,
+                        type: record.plateType,
+                        confidence: record.confidence,
+                        timestamp: record.timestamp,
+                        imageUrl: record.imageUrl,
+                        location: record.location,
+                        rect: record.rect,
+                        saved: true,
+                        cameraId: record.cameraId,
+                        cameraName: record.cameraName
+                    });
+                }
+            }
+            
+            // 按时间倒序排序
+            records.sort((a, b) => b.timestamp - a.timestamp);
+            
+            res.json(records);
+            return;
+        } catch (error) {
+            console.warn('从 plate_records 查询失败，尝试从 plates 表查询:', error);
+            // 如果失败，回退到旧的 plates 表
+            const plates = await getPlatesFromDb({
+                start: start ? Number(start) : undefined,
+                end: end ? Number(end) : undefined,
+                type: type as string | undefined
+            });
+            res.json(plates);
+        }
     } catch (error) {
         console.error('Error fetching plates:', error);
         res.status(500).json({ message: 'Error fetching plates' });
@@ -26,20 +77,59 @@ export const getPlates = async (req: Request, res: Response) => {
 export const savePlate = async (req: Request, res: Response) => {
     try {
         const plateData: LicensePlate = req.body;
+        
+        console.log('收到保存请求:', {
+            plateNumber: plateData.number,
+            timestamp: plateData.timestamp,
+            cameraId: plateData.cameraId,
+            cameraName: plateData.cameraName
+        });
 
-        const newPlate: LicensePlate = {
-            ...plateData,
+        // 转换为 PlateRecord 格式并保存
+        const record: PlateRecord = {
             id: plateData.id || uuidv4(),
+            plateNumber: plateData.number,
+            plateType: plateData.type,
+            confidence: plateData.confidence,
             timestamp: plateData.timestamp || Date.now(),
-            saved: true
+            cameraId: plateData.cameraId,
+            cameraName: plateData.cameraName || plateData.location,
+            location: plateData.location,
+            imageUrl: plateData.imageUrl,
+            rect: plateData.rect,
+            createdAt: Date.now()
         };
 
-        // savePlateToDb 会自动检查黑名单并创建告警
-        const savedPlate = await savePlateToDb(newPlate);
-        res.json(savedPlate);
+        console.log('准备保存记录:', record);
+
+        // savePlateRecord 会自动检查黑名单并创建告警
+        const savedRecord = await savePlateRecord(record);
+        
+        console.log('保存成功:', savedRecord);
+        
+        // 返回兼容格式
+        const response: LicensePlate = {
+            id: savedRecord.id,
+            number: savedRecord.plateNumber,
+            type: savedRecord.plateType,
+            confidence: savedRecord.confidence,
+            timestamp: savedRecord.timestamp,
+            imageUrl: savedRecord.imageUrl,
+            location: savedRecord.location,
+            rect: savedRecord.rect,
+            saved: true,
+            cameraId: savedRecord.cameraId,
+            cameraName: savedRecord.cameraName
+        };
+        
+        res.json(response);
     } catch (error) {
         console.error('Error saving plate:', error);
-        res.status(500).json({ message: 'Error saving plate' });
+        console.error('错误堆栈:', error instanceof Error ? error.stack : '无堆栈信息');
+        res.status(500).json({ 
+            message: 'Error saving plate',
+            error: error instanceof Error ? error.message : String(error)
+        });
     }
 };
 
@@ -50,6 +140,11 @@ export const recognizePlate = async (req: Request, res: Response) => {
              res.status(400).json({ message: 'No file uploaded' });
              return;
         }
+
+        // 从 FormData 中获取摄像头信息（multer 会将非文件字段放在 req.body 中）
+        const cameraId = req.body.cameraId as string | undefined;
+        const cameraName = req.body.cameraName as string | undefined;
+        const location = req.body.location as string | undefined;
 
         // Call Python AI Service
         try {
@@ -90,8 +185,10 @@ export const recognizePlate = async (req: Request, res: Response) => {
                     timestamp: Date.now(),
                     rect: bestPlate.rect,
                     saved: false, // Not saved to DB yet, just recognized
-                    location: 'Camera 1', // Default
-                    imageUrl: `uploads/${file.filename}`
+                    location: location || cameraName || '未知位置',
+                    imageUrl: `uploads/${file.filename}`,
+                    cameraId: cameraId,
+                    cameraName: cameraName || '未知摄像头'
                 };
                 
                 res.json(plate);

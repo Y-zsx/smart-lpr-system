@@ -1,5 +1,5 @@
 import { pool } from '../config/database';
-import { LicensePlate, BlacklistItem, Alarm, Rect } from '../types';
+import { LicensePlate, BlacklistItem, Alarm, Rect, PlateRecord, PlateGroup } from '../types';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
 
 // 数据库接口
@@ -245,4 +245,286 @@ export const saveDb = async (db: Database): Promise<void> => {
   
   // 注意：blacklist 和 alarms 应该通过专门的函数操作
   // 这里仅为了兼容性保留
+};
+
+// ========== Cameras 相关操作 ==========
+
+export interface Camera {
+  id: string;
+  name: string;
+  type: 'local' | 'stream' | 'file';
+  url?: string;
+  deviceId?: string;
+  location?: string;
+  status: 'online' | 'offline';
+  lastActive?: number;
+}
+
+export const getCamerasFromDb = async (): Promise<Camera[]> => {
+  const connection = await pool.getConnection();
+  try {
+    // 如果 cameras 表不存在，返回空数组（兼容性处理）
+    try {
+      const [rows] = await connection.execute<RowDataPacket[]>(
+        'SELECT * FROM `cameras` ORDER BY `name` ASC'
+      );
+      
+      return rows.map((row: RowDataPacket) => ({
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        url: row.url || undefined,
+        deviceId: row.device_id || undefined,
+        location: row.location || undefined,
+        status: row.status,
+        lastActive: row.last_active ? parseInt(row.last_active) : undefined
+      }));
+    } catch (error: any) {
+      // 表不存在时返回空数组
+      if (error.code === 'ER_NO_SUCH_TABLE') {
+        return [];
+      }
+      throw error;
+    }
+  } finally {
+    connection.release();
+  }
+};
+
+export const saveCameraToDb = async (camera: Camera): Promise<Camera> => {
+  const connection = await pool.getConnection();
+  try {
+    // 确保 cameras 表存在
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS \`cameras\` (
+        \`id\` VARCHAR(255) PRIMARY KEY,
+        \`name\` VARCHAR(255) NOT NULL,
+        \`type\` ENUM('local', 'stream', 'file') NOT NULL,
+        \`url\` TEXT,
+        \`device_id\` VARCHAR(255),
+        \`location\` VARCHAR(255),
+        \`status\` ENUM('online', 'offline') DEFAULT 'offline',
+        \`last_active\` BIGINT
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    `);
+
+    const query = `
+      INSERT INTO \`cameras\` (
+        \`id\`, \`name\`, \`type\`, \`url\`, \`device_id\`, \`location\`, \`status\`, \`last_active\`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        \`name\` = VALUES(\`name\`),
+        \`type\` = VALUES(\`type\`),
+        \`url\` = VALUES(\`url\`),
+        \`device_id\` = VALUES(\`device_id\`),
+        \`location\` = VALUES(\`location\`),
+        \`status\` = VALUES(\`status\`),
+        \`last_active\` = VALUES(\`last_active\`)
+    `;
+
+    const params = [
+      camera.id,
+      camera.name,
+      camera.type,
+      camera.url || null,
+      camera.deviceId || null,
+      camera.location || null,
+      camera.status,
+      camera.lastActive || null
+    ];
+
+    await connection.execute(query, params);
+    return camera;
+  } finally {
+    connection.release();
+  }
+};
+
+export const deleteCameraFromDb = async (id: string): Promise<boolean> => {
+  const connection = await pool.getConnection();
+  try {
+    const [result] = await connection.execute<ResultSetHeader>(
+      'DELETE FROM `cameras` WHERE `id` = ?',
+      [id]
+    );
+    return result.affectedRows > 0;
+  } finally {
+    connection.release();
+  }
+};
+
+// ========== Plate Records 相关操作（新结构：以车牌号为唯一标识） ==========
+
+// 保存识别记录（每次识别都创建新记录）
+export const savePlateRecord = async (record: PlateRecord): Promise<PlateRecord> => {
+  const connection = await pool.getConnection();
+  try {
+    console.log('开始保存识别记录到数据库:', {
+      plateNumber: record.plateNumber,
+      timestamp: record.timestamp,
+      cameraId: record.cameraId,
+      cameraName: record.cameraName
+    });
+    
+    await connection.beginTransaction();
+
+    const query = `
+      INSERT INTO \`plate_records\` (
+        \`id\`, \`plate_number\`, \`plate_type\`, \`confidence\`, \`timestamp\`,
+        \`camera_id\`, \`camera_name\`, \`location\`, \`image_url\`,
+        \`rect_x\`, \`rect_y\`, \`rect_w\`, \`rect_h\`, \`created_at\`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const params = [
+      record.id,
+      record.plateNumber,
+      record.plateType,
+      record.confidence,
+      record.timestamp,
+      record.cameraId || null,
+      record.cameraName || null,
+      record.location || null,
+      record.imageUrl || null,
+      record.rect?.x || null,
+      record.rect?.y || null,
+      record.rect?.w || null,
+      record.rect?.h || null,
+      record.createdAt || Date.now()
+    ];
+
+    console.log('执行 SQL 插入:', { query, params: params.map((p, i) => i < 5 ? p : '...') });
+    const [result] = await connection.execute(query, params);
+    console.log('插入结果:', result);
+
+    // 检查黑名单并创建告警
+    const [blacklistRows] = await connection.execute<RowDataPacket[]>(
+      'SELECT * FROM `blacklist` WHERE `plate_number` = ?',
+      [record.plateNumber]
+    );
+
+    if (blacklistRows.length > 0) {
+      const blacklistItem = blacklistRows[0];
+      await connection.execute(
+        `INSERT INTO \`alarms\` (
+          \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
+          \`plate_number\`, \`image_path\`, \`location\`, \`reason\`, \`severity\`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          record.id,
+          blacklistItem.id,
+          Date.now(),
+          0,
+          record.plateNumber,
+          record.imageUrl || null,
+          record.location || null,
+          `Blacklisted: ${blacklistItem.reason}`,
+          blacklistItem.severity
+        ]
+      );
+    }
+
+    await connection.commit();
+    return record;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+// 获取识别记录（按车牌号分组）
+export const getPlateGroups = async (filters?: {
+  start?: number;
+  end?: number;
+  type?: string;
+  plateNumber?: string;
+}): Promise<PlateGroup[]> => {
+  const connection = await pool.getConnection();
+  try {
+    let query = `
+      SELECT 
+        \`plate_number\`,
+        \`plate_type\`,
+        MIN(\`timestamp\`) as \`first_seen\`,
+        MAX(\`timestamp\`) as \`last_seen\`,
+        COUNT(*) as \`total_count\`,
+        AVG(\`confidence\`) as \`avg_confidence\`
+      FROM \`plate_records\`
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+
+    if (filters?.start) {
+      query += ' AND `timestamp` >= ?';
+      params.push(filters.start);
+    }
+    if (filters?.end) {
+      query += ' AND `timestamp` <= ?';
+      params.push(filters.end);
+    }
+    if (filters?.type) {
+      query += ' AND `plate_type` = ?';
+      params.push(filters.type);
+    }
+    if (filters?.plateNumber) {
+      query += ' AND `plate_number` = ?';
+      params.push(filters.plateNumber);
+    }
+
+    query += ' GROUP BY `plate_number`, `plate_type` ORDER BY `last_seen` DESC';
+
+    const [rows] = await connection.execute<RowDataPacket[]>(query, params);
+
+    // 获取每个车牌号的详细记录
+    const groups: PlateGroup[] = [];
+    for (const row of rows) {
+      const [records] = await connection.execute<RowDataPacket[]>(
+        `SELECT * FROM \`plate_records\` 
+         WHERE \`plate_number\` = ? 
+         ORDER BY \`timestamp\` DESC`,
+        [row.plate_number]
+      );
+
+      const recordList: PlateRecord[] = records.map((r: RowDataPacket) => ({
+        id: r.id,
+        plateNumber: r.plate_number,
+        plateType: r.plate_type,
+        confidence: parseFloat(r.confidence),
+        timestamp: parseInt(r.timestamp),
+        cameraId: r.camera_id || undefined,
+        cameraName: r.camera_name || undefined,
+        location: r.location || undefined,
+        imageUrl: r.image_url || undefined,
+        rect: r.rect_x !== null ? {
+          x: r.rect_x,
+          y: r.rect_y,
+          w: r.rect_w,
+          h: r.rect_h
+        } : undefined,
+        createdAt: parseInt(r.created_at)
+      }));
+
+      // 提取唯一的位置和摄像头列表
+      const locations = [...new Set(recordList.map(r => r.location).filter(Boolean))] as string[];
+      const cameras = [...new Set(recordList.map(r => r.cameraName).filter(Boolean))] as string[];
+
+      groups.push({
+        plateNumber: row.plate_number,
+        plateType: row.plate_type,
+        firstSeen: parseInt(row.first_seen),
+        lastSeen: parseInt(row.last_seen),
+        totalCount: parseInt(row.total_count),
+        records: recordList,
+        averageConfidence: parseFloat(row.avg_confidence),
+        locations,
+        cameras
+      });
+    }
+
+    return groups;
+  } finally {
+    connection.release();
+  }
 };

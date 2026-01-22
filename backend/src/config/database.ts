@@ -105,6 +105,30 @@ export const initDatabase = async (): Promise<void> => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 
+    // 创建 plate_records 表（识别记录表）
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS \`plate_records\` (
+        \`id\` VARCHAR(36) PRIMARY KEY,
+        \`plate_number\` VARCHAR(20) NOT NULL,
+        \`plate_type\` ENUM('blue', 'yellow', 'green', 'white', 'black') NOT NULL,
+        \`confidence\` DECIMAL(5,4) NOT NULL,
+        \`timestamp\` BIGINT NOT NULL,
+        \`camera_id\` VARCHAR(100),
+        \`camera_name\` VARCHAR(200),
+        \`location\` VARCHAR(200),
+        \`image_url\` VARCHAR(500),
+        \`rect_x\` INT,
+        \`rect_y\` INT,
+        \`rect_w\` INT,
+        \`rect_h\` INT,
+        \`created_at\` BIGINT NOT NULL,
+        INDEX \`idx_plate_number\` (\`plate_number\`),
+        INDEX \`idx_timestamp\` (\`timestamp\`),
+        INDEX \`idx_camera_id\` (\`camera_id\`),
+        INDEX \`idx_created_at\` (\`created_at\`)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
     connection.release();
     console.log('✅ 数据库表初始化成功');
   } catch (error) {

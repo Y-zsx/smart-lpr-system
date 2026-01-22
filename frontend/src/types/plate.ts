@@ -41,3 +41,31 @@ export interface RecognitionStats {
 // 为了兼容 Store 的别名
 export type Plate = LicensePlate;
 export type PlateStats = RecognitionStats;
+
+// 识别记录（每次识别的一条记录）
+export interface PlateRecord {
+    id: string;
+    plateNumber: string;
+    plateType: PlateType;
+    confidence: number;
+    timestamp: number;
+    cameraId?: string;
+    cameraName?: string;
+    location?: string;
+    imageUrl?: string;
+    rect?: Rect;
+    createdAt: number;
+}
+
+// 车牌号集合（以车牌号为唯一标识，包含多条识别记录）
+export interface PlateGroup {
+    plateNumber: string;
+    plateType: PlateType;
+    firstSeen: number; // 首次识别时间
+    lastSeen: number; // 最后识别时间
+    totalCount: number; // 识别次数
+    records: PlateRecord[]; // 识别记录列表
+    averageConfidence: number; // 平均置信度
+    locations: string[]; // 出现过的位置列表
+    cameras: string[]; // 出现过的摄像头列表
+}
