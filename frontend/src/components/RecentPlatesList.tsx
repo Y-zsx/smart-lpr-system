@@ -144,18 +144,18 @@ export const RecentPlatesList: React.FC<RecentPlatesListProps> = ({ date, limit 
                             </div>
                             <div className="flex items-center gap-4 text-xs text-gray-500">
                                 {group.locations.length > 0 && (
-                                    <div className="flex items-center gap-1">
-                                        <MapPin size={12} />
-                                        <span>{group.locations[0]}</span>
+                                    <div className="flex items-center gap-1 min-w-0 flex-shrink">
+                                        <MapPin size={12} className="flex-shrink-0" />
+                                        <span className="truncate" title={group.locations[0]}>{group.locations[0]}</span>
                                     </div>
                                 )}
                                 {group.cameras.length > 0 && (
-                                    <div className="flex items-center gap-1">
-                                        <Camera size={12} />
-                                        <span>{group.cameras[0]}</span>
+                                    <div className="flex items-center gap-1 min-w-0 flex-shrink">
+                                        <Camera size={12} className="flex-shrink-0" />
+                                        <span className="truncate" title={group.cameras[0]}>{group.cameras[0]}</span>
                                     </div>
                                 )}
-                                <span>置信度: {(group.averageConfidence * 100).toFixed(0)}%</span>
+                                <span className="flex-shrink-0">置信度: {(group.averageConfidence * 100).toFixed(0)}%</span>
                             </div>
                         </div>
                     );
