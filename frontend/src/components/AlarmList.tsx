@@ -147,7 +147,7 @@ export const AlarmList: React.FC = () => {
                                 {latestAlarm && (
                                     <>
                                         <p className="text-sm text-red-600 mb-2 font-medium bg-red-50/50 p-2 rounded line-clamp-2">
-                                            {formatReason(latestAlarm.reason)}
+                                            告警原因: {formatReason(latestAlarm.reason)}
                                         </p>
                                         <div className="flex items-center justify-between text-xs text-gray-500">
                                             <div className="flex items-center gap-1.5">

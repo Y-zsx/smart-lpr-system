@@ -120,7 +120,7 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                                             alarm.severity === 'medium' ? 'text-orange-700' :
                                             'text-yellow-700'
                                         }`}>
-                                            {formatReason(alarm.reason)}
+                                            告警原因: {formatReason(alarm.reason)}
                                         </p>
                                         {alarm.location && (
                                             <div className="flex items-center gap-1 text-xs text-gray-600">
