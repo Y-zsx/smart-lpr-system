@@ -199,6 +199,41 @@ export const apiClient = {
         return res.json();
     },
 
+    async getCameras() {
+        const res = await fetch(`${BACKEND_URL}/api/cameras`, { headers: getHeaders() });
+        if (!res.ok) throw new Error('Failed to fetch cameras');
+        return res.json();
+    },
+
+    async addCamera(data: any) {
+        const res = await fetch(`${BACKEND_URL}/api/cameras`, {
+            method: 'POST',
+            headers: getHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (!res.ok) throw new Error('Failed to add camera');
+        return res.json();
+    },
+
+    async updateCamera(id: string, data: any) {
+        const res = await fetch(`${BACKEND_URL}/api/cameras/${encodeURIComponent(id)}`, {
+            method: 'PUT',
+            headers: getHeaders(),
+            body: JSON.stringify(data)
+        });
+        if (!res.ok) throw new Error('Failed to update camera');
+        return res.json();
+    },
+
+    async deleteCamera(id: string) {
+        const res = await fetch(`${BACKEND_URL}/api/cameras?id=${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+        });
+        if (!res.ok) throw new Error('Failed to delete camera');
+        return res.json();
+    },
+
     // 添加通用的 fetch 方法供其他服务使用
     async fetch(endpoint: string, options?: RequestInit) {
         const url = endpoint.startsWith('http') ? endpoint : `${BACKEND_URL}${endpoint}`;

@@ -19,7 +19,8 @@ interface CameraStore {
     selectedCameraId: string;
     availableDevices: MediaDeviceInfo[]; // 可用的本地摄像头设备列表
 
-    addCamera: (camera: Omit<CameraDevice, 'id' | 'status'>) => void;
+    addCamera: (camera: Omit<CameraDevice, 'id' | 'status'> | CameraDevice) => void;
+    updateCamera: (id: string, camera: Partial<Omit<CameraDevice, 'id'>>) => void;
     removeCamera: (id: string) => void;
     selectCamera: (id: string) => void;
     updateCameraStatus: (id: string, status: 'online' | 'offline') => void;
@@ -41,16 +42,23 @@ export const useCameraStore = create<CameraStore>()(
             selectedCameraId: 'local-default',
             availableDevices: [],
 
-            addCamera: (camera) => set((state) => ({
-                cameras: [
-                    ...state.cameras,
-                    {
-                        ...camera,
-                        id: `cam-${Date.now()}`,
-                        status: 'offline', // 默认为离线，直到验证通过
-                        lastActive: Date.now()
-                    }
-                ]
+            addCamera: (camera) => set((state) => {
+                // 如果已经包含 id，直接使用；否则生成新的 id
+                const cameraToAdd: CameraDevice = 'id' in camera ? camera : {
+                    ...camera,
+                    id: `cam-${Date.now()}`,
+                    status: 'offline', // 默认为离线，直到验证通过
+                    lastActive: Date.now()
+                };
+                return {
+                    cameras: [...state.cameras, cameraToAdd]
+                };
+            }),
+
+            updateCamera: (id, camera) => set((state) => ({
+                cameras: state.cameras.map(c =>
+                    c.id === id ? { ...c, ...camera } : c
+                )
             })),
 
             removeCamera: (id) => set((state) => {
