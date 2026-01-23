@@ -14,8 +14,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, actions }) => 
     const location = useLocation();
 
     const navItems = [
-        { path: '/', label: '仪表盘', icon: <LayoutDashboard size={20} /> },
         { path: '/monitor', label: '实时监控', icon: <MonitorPlay size={20} /> },
+        { path: '/', label: '仪表盘', icon: <LayoutDashboard size={20} /> },
         { path: '/records', label: '识别记录', icon: <FileText size={20} /> },
         { path: '/alarms', label: '告警中心', icon: <AlertTriangle size={20} /> },
     ];
