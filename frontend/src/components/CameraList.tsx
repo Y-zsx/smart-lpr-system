@@ -1,12 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useCameraStore, CameraDevice } from '../store/cameraStore';
-import { Video, Globe, Plus, Trash2, Settings, MonitorPlay, FileVideo, RefreshCw } from 'lucide-react';
+import { Video, Globe, Plus, Trash2, Settings, MonitorPlay, FileVideo, RefreshCw, MapPin, X } from 'lucide-react';
+import { LocationPicker } from './LocationPicker';
 
 export const CameraList: React.FC = () => {
     const { cameras, selectedCameraId, selectCamera, addCamera, removeCamera, refreshDevices, availableDevices } = useCameraStore();
     const [isAdding, setIsAdding] = useState(false);
     const [addType, setAddType] = useState<'stream' | 'file'>('stream');
-    const [newCam, setNewCam] = useState({ name: '', url: '', type: 'stream' as const });
+    const [newCam, setNewCam] = useState({ 
+        name: '', 
+        url: '' as string, 
+        type: 'stream' as const,
+        location: undefined as { address: string; lng: number; lat: number } | undefined
+    });
+    const [showLocationPicker, setShowLocationPicker] = useState(false);
 
     useEffect(() => {
         // 组件加载时刷新设备列表
@@ -32,10 +39,13 @@ export const CameraList: React.FC = () => {
         addCamera({
             name: newCam.name,
             type: addType,
-            url: newCam.url
+            url: newCam.url,
+            location: newCam.location?.address,
+            latitude: newCam.location?.lat,
+            longitude: newCam.location?.lng
         });
         setIsAdding(false);
-        setNewCam({ name: '', url: '', type: 'stream' });
+        setNewCam({ name: '', url: '', type: 'stream', location: undefined });
         setAddType('stream');
     };
 
@@ -104,6 +114,12 @@ export const CameraList: React.FC = () => {
                                              '网络流'}
                                         </span>
                                     </div>
+                                    {cam.location && (
+                                        <div className="flex items-center gap-1 mt-1 text-xs text-gray-500">
+                                            <MapPin size={12} />
+                                            <span className="truncate">{cam.location}</span>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -154,12 +170,12 @@ export const CameraList: React.FC = () => {
                             </div>
                             <div>
                                 <label className="text-xs text-gray-500 block mb-1">名称</label>
-                                <input
-                                    className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500"
-                                    placeholder={addType === 'stream' ? '例如：停车场入口' : '例如：演示视频'}
-                                    value={newCam.name}
-                                    onChange={e => setNewCam({ ...newCam, name: e.target.value })}
-                                />
+                                    <input
+                                        className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500"
+                                        placeholder={addType === 'stream' ? '例如：停车场入口' : '例如：演示视频'}
+                                        value={newCam.name || ''}
+                                        onChange={e => setNewCam({ ...newCam, name: e.target.value })}
+                                    />
                             </div>
                             {addType === 'stream' ? (
                                 <div>
@@ -167,7 +183,7 @@ export const CameraList: React.FC = () => {
                                     <input
                                         className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500"
                                         placeholder="http://... 或 rtsp://..."
-                                        value={newCam.url}
+                                        value={newCam.url || ''}
                                         onChange={e => setNewCam({ ...newCam, url: e.target.value })}
                                     />
                                     <p className="text-xs text-gray-400 mt-1">支持 MJPEG、HLS 等格式</p>
@@ -186,11 +202,40 @@ export const CameraList: React.FC = () => {
                                     )}
                                 </div>
                             )}
+                            {/* 位置选择 */}
+                            <div>
+                                <label className="text-xs text-gray-500 block mb-1">位置</label>
+                                <button
+                                    type="button"
+                                    onClick={() => setShowLocationPicker(true)}
+                                    className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500 flex items-center gap-2 hover:bg-gray-100"
+                                >
+                                    <MapPin size={16} className="text-gray-400" />
+                                    <span className="flex-1 text-left">
+                                        {newCam.location ? newCam.location.address : '点击选择位置'}
+                                    </span>
+                                    {newCam.location && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setNewCam({ ...newCam, location: undefined });
+                                            }}
+                                            className="text-gray-400 hover:text-red-500"
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    )}
+                                </button>
+                                {newCam.location && (
+                                    <p className="text-xs text-green-600 mt-1">✓ 位置已选择</p>
+                                )}
+                            </div>
                             <div className="flex gap-2 pt-2">
                                 <button
                                     onClick={() => {
                                         setIsAdding(false);
-                                        setNewCam({ name: '', url: '', type: 'stream' });
+                                        setNewCam({ name: '', url: '', type: 'stream', location: undefined });
                                         setAddType('stream');
                                     }}
                                     className="flex-1 px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200"
@@ -207,6 +252,18 @@ export const CameraList: React.FC = () => {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {/* Location Picker Modal */}
+            {showLocationPicker && (
+                <LocationPicker
+                    value={newCam.location}
+                    onChange={(location) => {
+                        setNewCam({ ...newCam, location });
+                        setShowLocationPicker(false);
+                    }}
+                    onClose={() => setShowLocationPicker(false)}
+                />
             )}
         </div>
     );

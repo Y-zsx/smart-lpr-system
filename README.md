@@ -157,6 +157,7 @@ npm run dev
 - **[摄像头配置指南](docs/CAMERA_SETUP.md)** - 详细的摄像头接入方案，包括USB摄像头、网络摄像头、视频文件等
 - **[数据记录说明](docs/PLATE_RECORDS.md)** - 车牌识别记录的数据结构和使用方法
 - **[数据库配置指南](docs/DATABASE.md)** - MySQL数据库配置和表结构说明
+- **[高德地图配置指南](docs/AMAP_SETUP.md)** - 高德地图API配置，实现真实地理位置选择
 
 ## 🛠️ 数据库脚本
 

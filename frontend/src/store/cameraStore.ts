@@ -9,7 +9,9 @@ export interface CameraDevice {
     deviceId?: string; // 本地摄像头设备ID
     status: 'online' | 'offline';
     lastActive?: number;
-    location?: string; // 摄像头位置信息
+    location?: string; // 摄像头位置信息（地址文本）
+    latitude?: number; // 纬度
+    longitude?: number; // 经度
 }
 
 interface CameraStore {

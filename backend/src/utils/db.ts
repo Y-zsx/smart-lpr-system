@@ -266,7 +266,9 @@ export interface Camera {
   type: 'local' | 'stream' | 'file';
   url?: string;
   deviceId?: string;
-  location?: string;
+  location?: string; // 地址文本
+  latitude?: number; // 纬度
+  longitude?: number; // 经度
   status: 'online' | 'offline';
   lastActive?: number;
 }
@@ -287,6 +289,8 @@ export const getCamerasFromDb = async (): Promise<Camera[]> => {
         url: row.url || undefined,
         deviceId: row.device_id || undefined,
         location: row.location || undefined,
+        latitude: row.latitude ? parseFloat(row.latitude) : undefined,
+        longitude: row.longitude ? parseFloat(row.longitude) : undefined,
         status: row.status,
         lastActive: row.last_active ? parseInt(row.last_active) : undefined
       }));
@@ -313,22 +317,40 @@ export const saveCameraToDb = async (camera: Camera): Promise<Camera> => {
         \`type\` ENUM('local', 'stream', 'file') NOT NULL,
         \`url\` TEXT,
         \`device_id\` VARCHAR(255),
-        \`location\` VARCHAR(255),
+        \`location\` VARCHAR(500),
+        \`latitude\` DECIMAL(10, 8),
+        \`longitude\` DECIMAL(11, 8),
         \`status\` ENUM('online', 'offline') DEFAULT 'offline',
         \`last_active\` BIGINT
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     `);
+    
+    // 添加经纬度字段（如果不存在）
+    try {
+      await connection.execute(`ALTER TABLE \`cameras\` ADD COLUMN \`latitude\` DECIMAL(10, 8) AFTER \`location\``);
+    } catch (e: any) {
+      // 字段已存在，忽略错误
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
+    try {
+      await connection.execute(`ALTER TABLE \`cameras\` ADD COLUMN \`longitude\` DECIMAL(11, 8) AFTER \`latitude\``);
+    } catch (e: any) {
+      // 字段已存在，忽略错误
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
 
     const query = `
       INSERT INTO \`cameras\` (
-        \`id\`, \`name\`, \`type\`, \`url\`, \`device_id\`, \`location\`, \`status\`, \`last_active\`
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        \`id\`, \`name\`, \`type\`, \`url\`, \`device_id\`, \`location\`, \`latitude\`, \`longitude\`, \`status\`, \`last_active\`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         \`name\` = VALUES(\`name\`),
         \`type\` = VALUES(\`type\`),
         \`url\` = VALUES(\`url\`),
         \`device_id\` = VALUES(\`device_id\`),
         \`location\` = VALUES(\`location\`),
+        \`latitude\` = VALUES(\`latitude\`),
+        \`longitude\` = VALUES(\`longitude\`),
         \`status\` = VALUES(\`status\`),
         \`last_active\` = VALUES(\`last_active\`)
     `;
@@ -340,6 +362,8 @@ export const saveCameraToDb = async (camera: Camera): Promise<Camera> => {
       camera.url || null,
       camera.deviceId || null,
       camera.location || null,
+      camera.latitude || null,
+      camera.longitude || null,
       camera.status,
       camera.lastActive || null
     ];
