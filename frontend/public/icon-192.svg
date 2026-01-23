@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <circle cx="96" cy="96" r="90" fill="#3b82f6" stroke="#2563eb" stroke-width="3"/>
+  <rect x="36" y="60" width="120" height="72" rx="5" fill="#ffffff" stroke="#1e40af" stroke-width="3"/>
+  <text x="96" y="114" font-family="Arial, sans-serif" font-size="42" font-weight="bold" fill="#1e40af" text-anchor="middle">LPR</text>
+  <line x1="36" y1="84" x2="156" y2="84" stroke="#3b82f6" stroke-width="3" opacity="0.6" stroke-dasharray="6,4"/>
+  <circle cx="144" cy="48" r="18" fill="#ffffff" stroke="#1e40af" stroke-width="2"/>
+  <circle cx="144" cy="48" r="9" fill="#3b82f6"/>
+</svg>
