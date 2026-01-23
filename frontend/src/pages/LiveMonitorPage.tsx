@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { CameraView } from '../components/CameraView';
 import { CameraList } from '../components/CameraList';
+import { CameraMap } from '../components/CameraMap';
 import { FileUpload } from '../components/FileUpload';
-import { Camera, Upload } from 'lucide-react';
+import { Camera, Upload, Map, List } from 'lucide-react';
 
 export const LiveMonitorPage: React.FC = () => {
     const [mode, setMode] = useState<'camera' | 'upload'>('camera');
+    const [rightView, setRightView] = useState<'list' | 'map'>('list');
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-140px)]">
@@ -41,9 +43,50 @@ export const LiveMonitorPage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Right Column: Camera List (4) */}
-            <div className="lg:col-span-4 h-full">
-                <CameraList />
+            {/* Right Column: Camera List or Map (4) */}
+            <div className="lg:col-span-4 h-full flex flex-col gap-4">
+                {/* View Toggle */}
+                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-2 flex gap-2">
+                    <button
+                        onClick={() => setRightView('list')}
+                        className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                            rightView === 'list'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                    >
+                        <List size={16} />
+                        摄像头列表
+                    </button>
+                    <button
+                        onClick={() => setRightView('map')}
+                        className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors ${
+                            rightView === 'map'
+                                ? 'bg-blue-600 text-white'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                        }`}
+                    >
+                        <Map size={16} />
+                        地图分布
+                    </button>
+                </div>
+
+                {/* Content Area */}
+                <div className="flex-1 min-h-0">
+                    {rightView === 'list' ? (
+                        <CameraList />
+                    ) : (
+                        <div className="bg-white rounded-xl border border-gray-100 shadow-sm h-full p-4">
+                            <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                                <Map size={18} className="text-blue-600" />
+                                摄像头位置分布
+                            </h3>
+                            <div className="h-[calc(100%-3rem)]">
+                                <CameraMap />
+                            </div>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
