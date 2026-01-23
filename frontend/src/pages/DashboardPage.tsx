@@ -139,6 +139,7 @@ export const DashboardPage: React.FC = () => {
                     type={selectedCategory.type}
                     label={selectedCategory.label}
                     onClose={() => setSelectedCategory(null)}
+                    date={selectedDate}
                 />
             )}
         </div>

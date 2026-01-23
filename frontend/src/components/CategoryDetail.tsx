@@ -8,9 +8,10 @@ interface CategoryDetailProps {
     type: string;
     label: string;
     onClose: () => void;
+    date?: string; // 可选的日期参数，格式：YYYY-MM-DD
 }
 
-export const CategoryDetail: React.FC<CategoryDetailProps> = ({ type, label, onClose }) => {
+export const CategoryDetail: React.FC<CategoryDetailProps> = ({ type, label, onClose, date }) => {
     const [groups, setGroups] = useState<PlateGroup[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedGroup, setSelectedGroup] = useState<PlateGroup | null>(null);
@@ -18,8 +19,17 @@ export const CategoryDetail: React.FC<CategoryDetailProps> = ({ type, label, onC
     useEffect(() => {
         const fetchGroups = async () => {
             try {
+                // 如果提供了日期，计算该日期的开始和结束时间
+                let start: number | undefined;
+                let end: number | undefined;
+                
+                if (date) {
+                    start = new Date(date).setHours(0, 0, 0, 0);
+                    end = new Date(date).setHours(23, 59, 59, 999);
+                }
+                
                 // 使用分组查询，获取不重复的车牌号
-                const data = await apiClient.getHistory(undefined, undefined, type, 'plate');
+                const data = await apiClient.getHistory(start, end, type, 'plate');
                 setGroups(Array.isArray(data) ? data : []);
             } catch (error) {
                 console.error("获取分类详情失败", error);
@@ -29,7 +39,7 @@ export const CategoryDetail: React.FC<CategoryDetailProps> = ({ type, label, onC
             }
         };
         fetchGroups();
-    }, [type]);
+    }, [type, date]);
 
     const getImageUrl = (path?: string) => {
         return apiClient.getImageUrl(path);
