@@ -9,7 +9,7 @@ import fs from 'fs-extra';
 export const getPlates = async (req: Request, res: Response) => {
     try {
         const { start, end, type, plateNumber, groupBy } = req.query;
-        
+
         // 如果指定了 groupBy=plate，使用新的分组查询
         if (groupBy === 'plate') {
             const groups = await getPlateGroups({
@@ -21,7 +21,7 @@ export const getPlates = async (req: Request, res: Response) => {
             res.json(groups);
             return;
         }
-        
+
         // 默认从 plate_records 表查询（新数据）
         // 同时兼容查询旧的 plates 表
         try {
@@ -32,7 +32,7 @@ export const getPlates = async (req: Request, res: Response) => {
                 type: type as string | undefined,
                 plateNumber: plateNumber as string | undefined
             });
-            
+
             // 将分组数据转换为单条记录列表（兼容旧接口）
             const records: LicensePlate[] = [];
             for (const group of groups) {
@@ -52,10 +52,10 @@ export const getPlates = async (req: Request, res: Response) => {
                     });
                 }
             }
-            
+
             // 按时间倒序排序
             records.sort((a, b) => b.timestamp - a.timestamp);
-            
+
             res.json(records);
             return;
         } catch (error) {
@@ -77,7 +77,7 @@ export const getPlates = async (req: Request, res: Response) => {
 export const savePlate = async (req: Request, res: Response) => {
     try {
         const plateData: LicensePlate = req.body;
-        
+
         console.log('收到保存请求:', {
             plateNumber: plateData.number,
             timestamp: plateData.timestamp,
@@ -104,9 +104,9 @@ export const savePlate = async (req: Request, res: Response) => {
 
         // savePlateRecord 会自动检查黑名单并创建告警
         const savedRecord = await savePlateRecord(record);
-        
+
         console.log('保存成功:', savedRecord);
-        
+
         // 返回兼容格式
         const response: LicensePlate = {
             id: savedRecord.id,
@@ -121,12 +121,12 @@ export const savePlate = async (req: Request, res: Response) => {
             cameraId: savedRecord.cameraId,
             cameraName: savedRecord.cameraName
         };
-        
+
         res.json(response);
     } catch (error) {
         console.error('Error saving plate:', error);
         console.error('错误堆栈:', error instanceof Error ? error.stack : '无堆栈信息');
-        res.status(500).json({ 
+        res.status(500).json({
             message: 'Error saving plate',
             error: error instanceof Error ? error.message : String(error)
         });
@@ -137,8 +137,8 @@ export const recognizePlate = async (req: Request, res: Response) => {
     try {
         const file = req.file; // From multer
         if (!file) {
-             res.status(400).json({ message: 'No file uploaded' });
-             return;
+            res.status(400).json({ message: 'No file uploaded' });
+            return;
         }
 
         // 从 FormData 中获取摄像头信息（multer 会将非文件字段放在 req.body 中）
@@ -160,23 +160,23 @@ export const recognizePlate = async (req: Request, res: Response) => {
             // 检查是否有错误
             if (aiResponse.data.error) {
                 console.error('AI Service returned error:', aiResponse.data.error);
-                res.status(500).json({ 
-                    message: 'AI recognition error', 
-                    error: aiResponse.data.error 
+                res.status(500).json({
+                    message: 'AI recognition error',
+                    error: aiResponse.data.error
                 });
                 return;
             }
 
             const aiPlates = aiResponse.data.plates;
-            console.log('AI Service response:', { 
-                platesCount: aiPlates?.length || 0, 
-                plates: aiPlates 
+            console.log('AI Service response:', {
+                platesCount: aiPlates?.length || 0,
+                plates: aiPlates
             });
-            
+
             if (aiPlates && aiPlates.length > 0) {
                 // Use the first detected plate
                 const bestPlate = aiPlates[0];
-                
+
                 const plate: LicensePlate = {
                     id: uuidv4(),
                     number: bestPlate.number,
@@ -190,17 +190,17 @@ export const recognizePlate = async (req: Request, res: Response) => {
                     cameraId: cameraId,
                     cameraName: cameraName || '未知摄像头'
                 };
-                
+
                 res.json(plate);
                 return;
             } else {
-                 // No plates found by AI
-                 console.warn('No license plates detected in image:', file.filename);
-                 res.status(404).json({ 
-                     message: 'No license plate detected',
-                     suggestion: 'Please ensure the image contains a clear license plate'
-                 });
-                 return;
+                // No plates found by AI
+                console.warn('No license plates detected in image:', file.filename);
+                res.status(404).json({
+                    message: 'No license plate detected',
+                    suggestion: 'Please ensure the image contains a clear license plate'
+                });
+                return;
             }
 
         } catch (aiError) {

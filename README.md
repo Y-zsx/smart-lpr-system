@@ -33,10 +33,12 @@ smart-lpr-system/
 │   ├── PLATE_RECORDS.md    # 数据记录说明
 │   └── DATABASE.md         # 数据库配置指南
 ├── scripts/           # 数据库脚本
-│   ├── README.md           # 脚本说明
-│   ├── init_database.sql           # 数据库初始化脚本
+│   ├── README.md                    # 脚本说明
+│   ├── init_database.sql            # 数据库初始化脚本
 │   ├── migrate_to_plate_records.sql # 数据迁移脚本
-│   └── verify_database.sql         # 数据库验证脚本
+│   ├── verify_database.sql          # 数据库验证脚本
+│   ├── clear_all_data.sql           # 清空数据脚本（测试用）
+│   └── update_historical_alarms_coordinates.sql # 更新历史告警坐标
 ├── start-dev.ps1      # Windows 一键启动脚本
 └── README.md          # 项目说明文档
 ```
@@ -161,12 +163,10 @@ npm run dev
 
 ## 🛠️ 数据库脚本
 
-数据库相关脚本位于 `scripts/` 目录，请查看 [脚本说明](scripts/README.md) 了解详细使用方法：
+数据库相关脚本位于 `scripts/` 目录，详细使用方法请参考 [数据库配置指南](docs/DATABASE.md)：
 
-- **[脚本说明](scripts/README.md)** - 脚本使用说明和执行方法
-- `init_database.sql` - 初始化数据库和表结构
-- `migrate_to_plate_records.sql` - 迁移到新的记录结构
-- `verify_database.sql` - 验证数据库配置
+- **[脚本快速参考](scripts/README.md)** - 脚本列表和快速使用方法
+- **[数据库配置指南](docs/DATABASE.md)** - 完整的数据库配置和脚本说明
 
 ## 📝 开发说明
 

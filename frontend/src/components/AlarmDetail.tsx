@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Alarm } from '../store/alarmStore';
-import { Clock, MapPin, X, Image as ImageIcon, AlertTriangle } from 'lucide-react';
+import { Clock, MapPin, X, Image as ImageIcon, AlertTriangle, Route } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { AlarmPathReplay } from './AlarmPathReplay';
 
 interface AlarmDetailProps {
     plateNumber: string;
@@ -11,6 +12,7 @@ interface AlarmDetailProps {
 
 export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, onClose }) => {
     const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
+    const [showPathReplay, setShowPathReplay] = useState(false);
 
     // 格式化告警原因，去掉 "Blacklisted: " 前缀
     const formatReason = (reason: string): string => {
@@ -33,6 +35,9 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
     };
     const latestAlarm = sortedAlarms[0];
 
+    // 检查是否有位置信息的告警
+    const hasLocationData = alarms.some(alarm => alarm.location);
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
@@ -53,6 +58,19 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                         <X size={20} className="text-gray-500" />
                     </button>
                 </div>
+
+                {/* Action Buttons */}
+                {hasLocationData && (
+                    <div className="p-4 border-b border-gray-200 shrink-0">
+                        <button
+                            onClick={() => setShowPathReplay(true)}
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                        >
+                            <Route size={18} />
+                            查看路径重现
+                        </button>
+                    </div>
+                )}
 
                 {/* Info Cards */}
                 <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0 border-b border-gray-200">
@@ -168,6 +186,15 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                             </button>
                         </div>
                     </div>
+                )}
+
+                {/* Path Replay Modal */}
+                {showPathReplay && (
+                    <AlarmPathReplay
+                        plateNumber={plateNumber}
+                        alarms={alarms}
+                        onClose={() => setShowPathReplay(false)}
+                    />
                 )}
             </div>
         </div>

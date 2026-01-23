@@ -46,11 +46,14 @@ CREATE TABLE IF NOT EXISTS `alarms` (
   `plate_number` VARCHAR(20) NOT NULL,
   `image_path` VARCHAR(500),
   `location` VARCHAR(100),
+  `latitude` DECIMAL(10, 8) NULL,
+  `longitude` DECIMAL(11, 8) NULL,
   `reason` VARCHAR(500) NOT NULL,
   `severity` ENUM('high', 'medium', 'low') NOT NULL DEFAULT 'medium',
   INDEX `idx_timestamp` (`timestamp`),
   INDEX `idx_is_read` (`is_read`),
   INDEX `idx_plate_number` (`plate_number`),
+  INDEX `idx_alarm_location` (`latitude`, `longitude`),
   FOREIGN KEY (`plate_id`) REFERENCES `plates`(`id`) ON DELETE SET NULL,
   FOREIGN KEY (`blacklist_id`) REFERENCES `blacklist`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

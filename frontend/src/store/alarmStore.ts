@@ -10,6 +10,8 @@ export interface Alarm {
     plate_number: string;
     image_path?: string;
     location?: string;
+    latitude?: number; // 纬度
+    longitude?: number; // 经度
     reason: string;
     severity: 'high' | 'medium' | 'low';
 }

@@ -228,6 +228,8 @@ export const getAlarms = async (): Promise<Alarm[]> => {
       plate_number: row.plate_number,
       image_path: row.image_path || undefined,
       location: row.location || undefined,
+      latitude: row.latitude ? parseFloat(row.latitude) : undefined,
+      longitude: row.longitude ? parseFloat(row.longitude) : undefined,
       reason: row.reason,
       severity: row.severity
     }));
@@ -453,25 +455,74 @@ export const savePlateRecord = async (record: PlateRecord): Promise<PlateRecord>
         // 使用记录的时间戳，而不是当前时间，确保告警时间与识别时间一致
         const alarmTimestamp = record.timestamp || Date.now();
         
+        // 尝试从摄像头表获取经纬度
+        let latitude: number | null = null;
+        let longitude: number | null = null;
+        
+        if (record.cameraId) {
+          try {
+            const [cameraRows] = await connection.execute<RowDataPacket[]>(
+              'SELECT `latitude`, `longitude` FROM `cameras` WHERE `id` = ?',
+              [record.cameraId]
+            );
+            if (cameraRows.length > 0 && cameraRows[0].latitude && cameraRows[0].longitude) {
+              latitude = parseFloat(cameraRows[0].latitude);
+              longitude = parseFloat(cameraRows[0].longitude);
+              console.log(`从摄像头 ${record.cameraId} 获取到坐标: (${longitude}, ${latitude})`);
+            }
+          } catch (error) {
+            console.warn(`无法从摄像头表获取坐标: ${error}`);
+          }
+        }
+        
         // 注意：plate_id 设置为 NULL，因为记录保存在 plate_records 表中，不在 plates 表中
         // 外键约束允许 NULL 值，且告警主要关联的是 blacklist_id 和 plate_number
-        await connection.execute(
-          `INSERT INTO \`alarms\` (
-            \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
-            \`plate_number\`, \`image_path\`, \`location\`, \`reason\`, \`severity\`
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            null, // plate_id 设置为 NULL，因为记录在 plate_records 表中，不在 plates 表中
-            blacklistItem.id,
-            alarmTimestamp,
-            0,
-            record.plateNumber,
-            record.imageUrl || null,
-            record.location || null,
-            `Blacklisted: ${blacklistItem.reason}`,
-            blacklistItem.severity
-          ]
-        );
+        // 尝试添加经纬度字段（如果表结构已更新）
+        try {
+          await connection.execute(
+            `INSERT INTO \`alarms\` (
+              \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
+              \`plate_number\`, \`image_path\`, \`location\`, \`latitude\`, \`longitude\`, \`reason\`, \`severity\`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              null, // plate_id 设置为 NULL，因为记录在 plate_records 表中，不在 plates 表中
+              blacklistItem.id,
+              alarmTimestamp,
+              0,
+              record.plateNumber,
+              record.imageUrl || null,
+              record.location || null,
+              latitude,
+              longitude,
+              `Blacklisted: ${blacklistItem.reason}`,
+              blacklistItem.severity
+            ]
+          );
+        } catch (error: any) {
+          // 如果字段不存在，使用旧格式（向后兼容）
+          if (error.code === 'ER_BAD_FIELD_ERROR') {
+            console.warn('告警表未包含经纬度字段，使用旧格式保存');
+            await connection.execute(
+              `INSERT INTO \`alarms\` (
+                \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
+                \`plate_number\`, \`image_path\`, \`location\`, \`reason\`, \`severity\`
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                null,
+                blacklistItem.id,
+                alarmTimestamp,
+                0,
+                record.plateNumber,
+                record.imageUrl || null,
+                record.location || null,
+                `Blacklisted: ${blacklistItem.reason}`,
+                blacklistItem.severity
+              ]
+            );
+          } else {
+            throw error;
+          }
+        }
         console.log(`告警创建成功: 车牌 ${record.plateNumber}, 时间 ${new Date(alarmTimestamp).toLocaleString()}`);
       } else {
         console.log(`告警已存在，跳过创建: 车牌 ${record.plateNumber}`);
@@ -505,25 +556,72 @@ export const createAlarmForBlacklist = async (record: PlateRecord, blacklistItem
       return;
     }
     
+    // 尝试从摄像头表获取经纬度
+    let latitude: number | null = null;
+    let longitude: number | null = null;
+    
+    if (record.cameraId) {
+      try {
+        const [cameraRows] = await connection.execute<RowDataPacket[]>(
+          'SELECT `latitude`, `longitude` FROM `cameras` WHERE `id` = ?',
+          [record.cameraId]
+        );
+        if (cameraRows.length > 0 && cameraRows[0].latitude && cameraRows[0].longitude) {
+          latitude = parseFloat(cameraRows[0].latitude);
+          longitude = parseFloat(cameraRows[0].longitude);
+        }
+      } catch (error) {
+        console.warn(`无法从摄像头表获取坐标: ${error}`);
+      }
+    }
+    
     // 注意：plate_id 设置为 NULL，因为记录保存在 plate_records 表中，不在 plates 表中
     // 外键约束允许 NULL 值，且告警主要关联的是 blacklist_id 和 plate_number
-    await connection.execute(
-      `INSERT INTO \`alarms\` (
-        \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
-        \`plate_number\`, \`image_path\`, \`location\`, \`reason\`, \`severity\`
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        null, // plate_id 设置为 NULL，因为记录在 plate_records 表中，不在 plates 表中
-        blacklistItem.id,
-        record.timestamp,
-        0,
-        record.plateNumber,
-        record.imageUrl || null,
-        record.location || null,
-        `Blacklisted: ${blacklistItem.reason}`,
-        blacklistItem.severity
-      ]
-    );
+    // 尝试添加经纬度字段（如果表结构已更新）
+    try {
+      await connection.execute(
+        `INSERT INTO \`alarms\` (
+          \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
+          \`plate_number\`, \`image_path\`, \`location\`, \`latitude\`, \`longitude\`, \`reason\`, \`severity\`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          null, // plate_id 设置为 NULL，因为记录在 plate_records 表中，不在 plates 表中
+          blacklistItem.id,
+          record.timestamp,
+          0,
+          record.plateNumber,
+          record.imageUrl || null,
+          record.location || null,
+          latitude,
+          longitude,
+          `Blacklisted: ${blacklistItem.reason}`,
+          blacklistItem.severity
+        ]
+      );
+    } catch (error: any) {
+      // 如果字段不存在，使用旧格式（向后兼容）
+      if (error.code === 'ER_BAD_FIELD_ERROR') {
+        await connection.execute(
+          `INSERT INTO \`alarms\` (
+            \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
+            \`plate_number\`, \`image_path\`, \`location\`, \`reason\`, \`severity\`
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            null,
+            blacklistItem.id,
+            record.timestamp,
+            0,
+            record.plateNumber,
+            record.imageUrl || null,
+            record.location || null,
+            `Blacklisted: ${blacklistItem.reason}`,
+            blacklistItem.severity
+          ]
+        );
+      } else {
+        throw error;
+      }
+    }
   } finally {
     connection.release();
   }

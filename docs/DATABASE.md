@@ -100,6 +100,8 @@ npm run dev
 | plate_number | VARCHAR(20) | 车牌号码 |
 | image_path | VARCHAR(500) | 图片路径 |
 | location | VARCHAR(100) | 识别位置 |
+| latitude | DECIMAL(10,8) | 纬度坐标 |
+| longitude | DECIMAL(11,8) | 经度坐标 |
 | reason | VARCHAR(500) | 告警原因 |
 | severity | ENUM | 严重程度 |
 
@@ -151,11 +153,14 @@ CREATE TABLE IF NOT EXISTS `alarms` (
   `plate_number` VARCHAR(20) NOT NULL,
   `image_path` VARCHAR(500),
   `location` VARCHAR(100),
+  `latitude` DECIMAL(10, 8) NULL,
+  `longitude` DECIMAL(11, 8) NULL,
   `reason` VARCHAR(500) NOT NULL,
   `severity` ENUM('high', 'medium', 'low') NOT NULL DEFAULT 'medium',
   INDEX `idx_timestamp` (`timestamp`),
   INDEX `idx_is_read` (`is_read`),
   INDEX `idx_plate_number` (`plate_number`),
+  INDEX `idx_alarm_location` (`latitude`, `longitude`),
   FOREIGN KEY (`plate_id`) REFERENCES `plates`(`id`) ON DELETE SET NULL,
   FOREIGN KEY (`blacklist_id`) REFERENCES `blacklist`(`id`) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -187,6 +192,84 @@ DB_USER=smart_lpr_user
 DB_PASSWORD=your_password
 ```
 
-## 数据迁移
+## 数据库脚本
 
-如果之前使用的是 JSON 文件数据库，可以编写迁移脚本将数据导入 MySQL。目前需要手动迁移或重新开始使用。
+项目提供了多个数据库脚本，位于 `scripts/` 目录。详细使用方法如下：
+
+### 初始化脚本
+
+**`init_database.sql`** - 数据库初始化脚本（首次安装必执行）
+
+```bash
+mysql -u root -p < scripts/init_database.sql
+# 或
+mysql -u root -p
+source scripts/init_database.sql;
+```
+
+功能：
+- 创建 `smart_lpr` 数据库
+- 创建所有必需的表结构（plates, blacklist, alarms, plate_records等）
+- 包含经纬度字段和索引配置
+
+### 迁移脚本
+
+**`migrate_to_plate_records.sql`** - 数据迁移脚本（升级系统时执行）
+
+```bash
+mysql -u root -p < scripts/migrate_to_plate_records.sql
+```
+
+功能：
+- 创建 `plate_records` 表（新的记录结构）
+- 迁移现有数据到新表
+- 保留原有表结构用于兼容性
+
+### 维护脚本
+
+**`verify_database.sql`** - 数据库验证脚本
+
+```bash
+mysql -u root -p < scripts/verify_database.sql
+```
+
+功能：
+- 检查数据库和表是否存在
+- 验证表结构完整性（包括经纬度字段）
+- 查看数据库统计信息
+
+**`clear_all_data.sql`** - 清空所有数据脚本（⚠️ 测试环境使用）
+
+```bash
+mysql -u root -p
+USE smart_lpr;
+source scripts/clear_all_data.sql;
+```
+
+⚠️ **警告**：会删除所有表的数据，执行前请先备份数据库。
+
+**`update_historical_alarms_coordinates.sql`** - 更新历史告警坐标（可选）
+
+```bash
+mysql -u root -p
+USE smart_lpr;
+source scripts/update_historical_alarms_coordinates.sql;
+```
+
+功能：
+- 为历史告警记录补充经纬度坐标
+- 从 `plate_records` 和 `cameras` 表关联获取坐标
+
+**注意**：需要先确保 `cameras` 表存在且有数据（在前端添加摄像头并保存会自动创建）。
+
+### 脚本执行顺序
+
+1. **首次安装**：执行 `init_database.sql`
+2. **升级系统**：先备份，再执行 `migrate_to_plate_records.sql`
+3. **验证配置**：随时可以执行 `verify_database.sql`
+4. **更新历史数据**：执行 `update_historical_alarms_coordinates.sql`（可选）
+
+### 注意事项
+
+- **备份数据**：执行任何脚本前，建议先备份现有数据
+- **权限要求**：确保MySQL用户有创建数据库和表的权限
