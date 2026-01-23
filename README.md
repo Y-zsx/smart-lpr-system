@@ -124,6 +124,7 @@ smart-lpr-system/
 
 ## 📚 文档
 
+- 🚀 [云服务器部署指南](docs/DEPLOYMENT.md) - **保姆级部署教程** ⭐
 - 📖 [快速开始指南](docs/QUICK_START.md) - 3分钟快速上手
 - 📹 [摄像头配置指南](docs/CAMERA_SETUP.md) - 摄像头接入方案
 - 🗄️ [数据库配置指南](docs/DATABASE.md) - MySQL 配置说明
