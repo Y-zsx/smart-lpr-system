@@ -123,16 +123,36 @@ export function arePlateGroupsEqual(
 }
 
 /**
- * 比较统计数据是否相等
+ * 比较统计数据是否相等（包括趋势数据）
  */
 export function areStatsEqual(stats1: any, stats2: any): boolean {
     if (!stats1 || !stats2) {
         return stats1 === stats2;
     }
 
-    return stats1.total === stats2.total &&
+    // 比较基本统计数据
+    const basicStatsEqual = stats1.total === stats2.total &&
            stats1.blue === stats2.blue &&
            stats1.green === stats2.green &&
            stats1.yellow === stats2.yellow &&
            stats1.other === stats2.other;
+
+    // 比较趋势数据
+    const trends1 = stats1.trends;
+    const trends2 = stats2.trends;
+    
+    // 如果都没有趋势数据，只比较基本统计
+    if (!trends1 && !trends2) {
+        return basicStatsEqual;
+    }
+    
+    // 如果只有一个有趋势数据，认为不相等
+    if (!trends1 || !trends2) {
+        return false;
+    }
+    
+    // 比较趋势数据的每个字段
+    const trendsEqual = JSON.stringify(trends1) === JSON.stringify(trends2);
+    
+    return basicStatsEqual && trendsEqual;
 }

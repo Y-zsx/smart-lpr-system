@@ -69,6 +69,14 @@ export const Dashboard: React.FC = () => {
                 setPlates(groups);
                 
                 if (dashboardStats) {
+                    console.log('收到仪表盘统计数据:', {
+                        dataMode,
+                        selectedDate,
+                        start,
+                        dashboardStats,
+                        trends: dashboardStats.trends
+                    });
+                    
                     // 更新统计数据和趋势（store内部会进行比较）
                     setStats({
                         total: dashboardStats.total,
@@ -78,6 +86,8 @@ export const Dashboard: React.FC = () => {
                         other: dashboardStats.other,
                         trends: dashboardStats.trends
                     });
+                } else {
+                    console.warn('仪表盘统计数据为空');
                 }
             } catch (e) {
                 console.error("Failed to fetch history:", e);

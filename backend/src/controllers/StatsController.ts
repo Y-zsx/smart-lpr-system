@@ -13,9 +13,35 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         
         if (date) {
             // 日期模式：获取指定日期的数据
-            const selectedDate = new Date(Number(date));
+            // 处理时间戳参数（可能是字符串或数字）
+            let dateTimestamp: number;
+            if (typeof date === 'string') {
+                dateTimestamp = Number(date);
+            } else if (typeof date === 'number') {
+                dateTimestamp = date;
+            } else if (Array.isArray(date) && date.length > 0) {
+                dateTimestamp = Number(String(date[0]));
+            } else {
+                dateTimestamp = Number(String(date));
+            }
+            
+            const selectedDate = new Date(dateTimestamp);
+            
+            // 确保日期有效
+            if (isNaN(selectedDate.getTime()) || isNaN(dateTimestamp)) {
+                return res.status(400).json({ message: 'Invalid date parameter' });
+            }
+            
+            // 使用本地时区计算当天的开始和结束时间
             const selectedStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 0, 0, 0, 0);
             const selectedEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 23, 59, 59, 999);
+            
+            console.log('获取仪表盘统计:', {
+                date: dateTimestamp,
+                selectedDate: selectedDate.toISOString(),
+                start: selectedStart.getTime(),
+                end: selectedEnd.getTime()
+            });
             
             // 获取所选日期的数据（不重复车牌）
             selectedGroups = await getPlateGroups({
@@ -36,6 +62,11 @@ export const getDashboardStats = async (req: Request, res: Response) => {
             const previousDayEnd = new Date(selectedEnd);
             previousDayEnd.setDate(previousDayEnd.getDate() - 1);
 
+            console.log('获取前一天数据:', {
+                start: previousDayStart.getTime(),
+                end: previousDayEnd.getTime()
+            });
+
             // 获取前一天的数据（不重复车牌）
             const previousDayGroups = await getPlateGroups({
                 start: previousDayStart.getTime(),
@@ -46,6 +77,11 @@ export const getDashboardStats = async (req: Request, res: Response) => {
             const previousDayGreen = previousDayGroups.filter(g => g.plateType === 'green').length;
             const previousDayYellow = previousDayGroups.filter(g => g.plateType === 'yellow').length;
             const previousDayOther = previousDayTotal - previousDayBlue - previousDayGreen - previousDayYellow;
+
+            console.log('趋势对比数据:', {
+                今日: { total, blue, green, yellow, other },
+                昨日: { total: previousDayTotal, blue: previousDayBlue, green: previousDayGreen, yellow: previousDayYellow, other: previousDayOther }
+            });
 
             // 计算趋势百分比
             const calculateTrend = (current: number, previous: number): { value: string, direction: "up" | "down" | "neutral" } => {
@@ -73,6 +109,8 @@ export const getDashboardStats = async (req: Request, res: Response) => {
                 green: calculateTrend(green, previousDayGreen),
                 other: calculateTrend(other + yellow, previousDayOther + previousDayYellow)
             };
+            
+            console.log('计算出的趋势:', trends);
         } else {
             // 总量模式：获取所有历史数据
             selectedGroups = await getPlateGroups();
@@ -99,9 +137,15 @@ export const getDashboardStats = async (req: Request, res: Response) => {
             green,
             yellow,
             other,
-            trends
+            trends: trends || {
+                total: { value: "--", direction: "neutral" as const },
+                blue: { value: "--", direction: "neutral" as const },
+                green: { value: "--", direction: "neutral" as const },
+                other: { value: "--", direction: "neutral" as const }
+            }
         };
 
+        console.log('返回的统计数据:', JSON.stringify(stats, null, 2));
         res.json(stats);
     } catch (error) {
         console.error('Error fetching dashboard stats:', error);
