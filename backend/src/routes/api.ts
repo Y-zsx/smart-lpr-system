@@ -15,6 +15,8 @@ const upload = multer({ dest: path.join(__dirname, '../../uploads/temp') });
 // Plates
 router.get('/plates', PlateController.getPlates);
 router.post('/plates', PlateController.savePlate);
+router.delete('/plates', PlateController.deletePlate);
+router.delete('/plates/by-number', PlateController.deletePlatesByNumber);
 router.post('/recognize', upload.single('file'), PlateController.recognizePlate);
 
 // Upload

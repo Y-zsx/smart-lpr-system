@@ -191,6 +191,22 @@ export const PlateList: React.FC<PlateListProps> = ({ date }) => {
                 <PlateDetail
                     group={selectedGroup}
                     onClose={() => setSelectedGroup(null)}
+                    onDeleted={() => {
+                        setSelectedGroup(null);
+                        // 刷新列表数据
+                        const fetchGroups = async () => {
+                            try {
+                                const start = date ? new Date(date).setHours(0, 0, 0, 0) : undefined;
+                                const end = date ? new Date(date).setHours(23, 59, 59, 999) : undefined;
+                                
+                                const groups = await apiClient.getHistory(start, end, undefined, 'plate');
+                                setPlateGroups(Array.isArray(groups) ? groups : []);
+                            } catch (error) {
+                                console.error('获取车牌分组数据失败:', error);
+                            }
+                        };
+                        fetchGroups();
+                    }}
                 />
             )}
         </div>

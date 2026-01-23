@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getPlates as getPlatesFromDb, savePlate as savePlateToDb, savePlateRecord, getPlateGroups } from '../utils/db';
+import { getPlates as getPlatesFromDb, savePlate as savePlateToDb, savePlateRecord, getPlateGroups, deletePlateRecord, deletePlateRecordsByNumber } from '../utils/db';
 import { LicensePlate, PlateType, PlateRecord } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
@@ -212,6 +212,58 @@ export const recognizePlate = async (req: Request, res: Response) => {
     } catch (error) {
         console.error('Recognition error:', error);
         res.status(500).json({ message: 'Error recognizing plate' });
+    }
+};
+
+// 删除单条识别记录
+export const deletePlate = async (req: Request, res: Response) => {
+    try {
+        const { id } = req.query;
+        
+        if (!id || typeof id !== 'string') {
+            res.status(400).json({ message: '缺少记录ID参数' });
+            return;
+        }
+
+        const deleted = await deletePlateRecord(id);
+        
+        if (deleted) {
+            res.json({ message: '删除成功', deleted: true });
+        } else {
+            res.status(404).json({ message: '记录不存在', deleted: false });
+        }
+    } catch (error) {
+        console.error('Error deleting plate record:', error);
+        res.status(500).json({ 
+            message: '删除失败',
+            error: error instanceof Error ? error.message : String(error)
+        });
+    }
+};
+
+// 删除指定车牌号的所有记录
+export const deletePlatesByNumber = async (req: Request, res: Response) => {
+    try {
+        const { plateNumber } = req.query;
+        
+        if (!plateNumber || typeof plateNumber !== 'string') {
+            res.status(400).json({ message: '缺少车牌号参数' });
+            return;
+        }
+
+        const deletedCount = await deletePlateRecordsByNumber(plateNumber);
+        
+        res.json({ 
+            message: '删除成功', 
+            deletedCount,
+            plateNumber 
+        });
+    } catch (error) {
+        console.error('Error deleting plates by number:', error);
+        res.status(500).json({ 
+            message: '删除失败',
+            error: error instanceof Error ? error.message : String(error)
+        });
     }
 };
 

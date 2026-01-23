@@ -66,6 +66,24 @@ export const apiClient = {
         return res.json();
     },
 
+    async deletePlate(id: string) {
+        const res = await fetch(`${BACKEND_URL}/api/plates?id=${encodeURIComponent(id)}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+        });
+        if (!res.ok) throw new Error('Failed to delete plate');
+        return res.json();
+    },
+
+    async deletePlatesByNumber(plateNumber: string) {
+        const res = await fetch(`${BACKEND_URL}/api/plates/by-number?plateNumber=${encodeURIComponent(plateNumber)}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+        });
+        if (!res.ok) throw new Error('Failed to delete plates');
+        return res.json();
+    },
+
     async getUploadUrl(filename: string) {
         const res = await fetch(`${BACKEND_URL}/api/upload-url`, {
             method: 'POST',

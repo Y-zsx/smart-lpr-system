@@ -1,15 +1,61 @@
 import React from 'react';
 import { PlateGroup } from '../types/plate';
-import { Clock, MapPin, Camera, X, Image as ImageIcon } from 'lucide-react';
+import { Clock, MapPin, Camera, X, Image as ImageIcon, Trash2, Loader, AlertTriangle } from 'lucide-react';
 import { apiClient } from '../api/client';
 
 interface PlateDetailProps {
     group: PlateGroup;
     onClose: () => void;
+    onDeleted?: () => void; // 删除后的回调，用于刷新列表
 }
 
-export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose }) => {
+export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDeleted }) => {
     const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
+    const [deletingRecordId, setDeletingRecordId] = React.useState<string | null>(null);
+    const [showDeleteConfirm, setShowDeleteConfirm] = React.useState<{ type: 'record' | 'all', recordId?: string } | null>(null);
+    const [isDeleting, setIsDeleting] = React.useState(false);
+
+    const handleDeleteRecord = async (recordId: string) => {
+        setIsDeleting(true);
+        setDeletingRecordId(recordId);
+        try {
+            await apiClient.deletePlate(recordId);
+            setShowDeleteConfirm(null);
+            // 通知父组件刷新数据
+            if (onDeleted) {
+                onDeleted();
+            } else {
+                // 如果没有回调，直接关闭弹窗
+                onClose();
+            }
+        } catch (error) {
+            console.error('删除记录失败:', error);
+            alert('删除失败，请重试');
+        } finally {
+            setIsDeleting(false);
+            setDeletingRecordId(null);
+        }
+    };
+
+    const handleDeleteAll = async () => {
+        setIsDeleting(true);
+        try {
+            await apiClient.deletePlatesByNumber(group.plateNumber);
+            setShowDeleteConfirm(null);
+            // 通知父组件刷新数据
+            if (onDeleted) {
+                onDeleted();
+            } else {
+                // 如果没有回调，直接关闭弹窗
+                onClose();
+            }
+        } catch (error) {
+            console.error('删除所有记录失败:', error);
+            alert('删除失败，请重试');
+        } finally {
+            setIsDeleting(false);
+        }
+    };
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -24,12 +70,21 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose }) => {
                             共识别 {group.totalCount} 次 | 平均置信度 {(group.averageConfidence * 100).toFixed(1)}%
                         </p>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                        <X size={20} className="text-gray-500" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                        <button
+                            onClick={() => setShowDeleteConfirm({ type: 'all' })}
+                            className="p-2 hover:bg-red-50 text-red-600 rounded-lg transition-colors"
+                            title="删除所有记录"
+                        >
+                            <Trash2 size={18} />
+                        </button>
+                        <button
+                            onClick={onClose}
+                            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        >
+                            <X size={20} className="text-gray-500" />
+                        </button>
+                    </div>
                 </div>
 
                 {/* Info Cards */}
@@ -95,19 +150,33 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose }) => {
                                             )}
                                         </div>
                                     </div>
-                                    {record.imageUrl && (
+                                    <div className="flex items-center gap-2">
+                                        {record.imageUrl && (
+                                            <button
+                                                onClick={() => {
+                                                    // 使用统一的图片URL构建方法
+                                                    const imageUrl = apiClient.getImageUrl(record.imageUrl);
+                                                    setSelectedImage(imageUrl);
+                                                }}
+                                                className="p-2 bg-white hover:bg-blue-50 rounded-lg border border-gray-200 transition-colors"
+                                                title="查看图片"
+                                            >
+                                                <ImageIcon size={18} className="text-gray-600" />
+                                            </button>
+                                        )}
                                         <button
-                                            onClick={() => {
-                                                // 使用统一的图片URL构建方法
-                                                const imageUrl = apiClient.getImageUrl(record.imageUrl);
-                                                setSelectedImage(imageUrl);
-                                            }}
-                                            className="p-2 bg-white hover:bg-blue-50 rounded-lg border border-gray-200 transition-colors"
-                                            title="查看图片"
+                                            onClick={() => setShowDeleteConfirm({ type: 'record', recordId: record.id })}
+                                            disabled={isDeleting && deletingRecordId === record.id}
+                                            className="p-2 bg-white hover:bg-red-50 text-red-600 rounded-lg border border-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                            title="删除此记录"
                                         >
-                                            <ImageIcon size={18} className="text-gray-600" />
+                                            {isDeleting && deletingRecordId === record.id ? (
+                                                <Loader size={18} className="animate-spin" />
+                                            ) : (
+                                                <Trash2 size={18} />
+                                            )}
                                         </button>
-                                    )}
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -133,6 +202,52 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose }) => {
                             >
                                 <X size={20} className="text-gray-800" />
                             </button>
+                        </div>
+                    </div>
+                )}
+
+                {/* Delete Confirmation Modal */}
+                {showDeleteConfirm && (
+                    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                        <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+                            <div className="flex items-start gap-4 mb-4">
+                                <div className="p-3 bg-red-100 rounded-full">
+                                    <AlertTriangle size={24} className="text-red-600" />
+                                </div>
+                                <div className="flex-1">
+                                    <h3 className="text-lg font-semibold text-gray-800 mb-2">
+                                        {showDeleteConfirm.type === 'all' ? '删除所有记录' : '删除记录'}
+                                    </h3>
+                                    <p className="text-sm text-gray-600">
+                                        {showDeleteConfirm.type === 'all' 
+                                            ? `确定要删除车牌 "${group.plateNumber}" 的所有 ${group.totalCount} 条识别记录吗？此操作不可恢复。`
+                                            : '确定要删除这条识别记录吗？此操作不可恢复。'}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex justify-end gap-3">
+                                <button
+                                    onClick={() => setShowDeleteConfirm(null)}
+                                    disabled={isDeleting}
+                                    className="px-4 py-2 text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors disabled:opacity-50"
+                                >
+                                    取消
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        if (showDeleteConfirm.type === 'all') {
+                                            handleDeleteAll();
+                                        } else if (showDeleteConfirm.recordId) {
+                                            handleDeleteRecord(showDeleteConfirm.recordId);
+                                        }
+                                    }}
+                                    disabled={isDeleting}
+                                    className="px-4 py-2 bg-red-600 text-white hover:bg-red-700 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+                                >
+                                    {isDeleting && <Loader size={16} className="animate-spin" />}
+                                    确认删除
+                                </button>
+                            </div>
                         </div>
                     </div>
                 )}

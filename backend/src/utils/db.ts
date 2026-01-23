@@ -780,3 +780,45 @@ export const getAllPlateRecords = async (filters?: {
     connection.release();
   }
 };
+
+// 删除单条识别记录
+export const deletePlateRecord = async (recordId: string): Promise<boolean> => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [result] = await connection.execute<ResultSetHeader>(
+      'DELETE FROM `plate_records` WHERE `id` = ?',
+      [recordId]
+    );
+
+    await connection.commit();
+    return result.affectedRows > 0;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+// 删除指定车牌号的所有记录
+export const deletePlateRecordsByNumber = async (plateNumber: string): Promise<number> => {
+  const connection = await pool.getConnection();
+  try {
+    await connection.beginTransaction();
+
+    const [result] = await connection.execute<ResultSetHeader>(
+      'DELETE FROM `plate_records` WHERE `plate_number` = ?',
+      [plateNumber]
+    );
+
+    await connection.commit();
+    return result.affectedRows;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
