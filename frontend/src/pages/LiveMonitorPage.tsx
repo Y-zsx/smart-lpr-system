@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { CameraView } from '../components/CameraView';
+import { MultiCameraView } from '../components/MultiCameraView';
 import { CameraList } from '../components/CameraList';
 import { CameraMap } from '../components/CameraMap';
 import { FileUpload } from '../components/FileUpload';
-import { Camera, Upload, Map, List } from 'lucide-react';
+import { Camera, Upload, Map, List, Grid } from 'lucide-react';
 
 export const LiveMonitorPage: React.FC = () => {
-    const [mode, setMode] = useState<'camera' | 'upload'>('camera');
+    const [mode, setMode] = useState<'camera' | 'upload' | 'multi'>('camera');
     const [rightView, setRightView] = useState<'list' | 'map'>('list');
 
     return (
@@ -23,7 +24,17 @@ export const LiveMonitorPage: React.FC = () => {
                                 }`}
                         >
                             <Camera size={18} />
-                            实时监控
+                            单窗口
+                        </button>
+                        <button
+                            onClick={() => setMode('multi')}
+                            className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${mode === 'multi'
+                                ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600'
+                                : 'text-gray-500 hover:bg-gray-50'
+                                }`}
+                        >
+                            <Grid size={18} />
+                            多窗口
                         </button>
                         <button
                             onClick={() => setMode('upload')}
@@ -38,7 +49,9 @@ export const LiveMonitorPage: React.FC = () => {
                     </div>
 
                     <div className="flex-1 bg-black relative min-h-0">
-                        {mode === 'camera' ? <CameraView /> : <FileUpload />}
+                        {mode === 'camera' ? <CameraView /> : 
+                         mode === 'multi' ? <MultiCameraView /> : 
+                         <FileUpload />}
                     </div>
                 </div>
             </div>
