@@ -39,8 +39,8 @@ export const DailyStatsChart: React.FC<DailyStatsChartProps> = ({ date }) => {
                 } else {
                     const endDate = new Date(date).setHours(23, 59, 59, 999);
                     const data = await apiClient.getDailyStats(endDate);
-                    // 确保数据按日期升序排列以用于图表显示
-                    setStats(data.reverse());
+                    // 后端返回的数据已经是按日期升序排列（从旧到新），直接使用
+                    setStats(data);
                 }
             } catch (error) {
                 console.error('加载统计数据失败', error);
