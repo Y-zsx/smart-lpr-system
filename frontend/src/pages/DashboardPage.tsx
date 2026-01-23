@@ -9,7 +9,7 @@ import { CategoryDetail } from '../components/CategoryDetail';
 import { apiClient } from '../api/client';
 
 export const DashboardPage: React.FC = () => {
-    const { stats, setPlates, setTrends } = usePlateStore();
+    const { stats, setPlates, setTrends, setStats } = usePlateStore();
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedCategory, setSelectedCategory] = useState<{ type: string, label: string } | null>(null);
 
@@ -22,7 +22,7 @@ export const DashboardPage: React.FC = () => {
                 
                 const [groups, dashboardStats] = await Promise.all([
                     apiClient.getHistory(start, end, undefined, 'plate'), // 使用分组查询
-                    apiClient.getDashboardStats().catch(err => {
+                    apiClient.getDashboardStats(start).catch(err => {
                         console.warn("Failed to fetch dashboard stats:", err);
                         return null;
                     })
@@ -30,8 +30,16 @@ export const DashboardPage: React.FC = () => {
 
                 // setPlates 现在可以处理分组数据
                 setPlates(groups);
-                if (dashboardStats && dashboardStats.trends) {
-                    setTrends(dashboardStats.trends);
+                if (dashboardStats) {
+                    // 更新统计数据和趋势
+                    setStats({
+                        total: dashboardStats.total,
+                        blue: dashboardStats.blue,
+                        green: dashboardStats.green,
+                        yellow: dashboardStats.yellow,
+                        other: dashboardStats.other,
+                        trends: dashboardStats.trends
+                    });
                 }
             } catch (e) {
                 console.error("Failed to fetch history:", e);
@@ -49,7 +57,7 @@ export const DashboardPage: React.FC = () => {
         return () => {
             if (interval) clearInterval(interval);
         };
-    }, [selectedDate, setPlates, setTrends]);
+    }, [selectedDate, setPlates, setStats]);
 
     const isToday = selectedDate === new Date().toISOString().split('T')[0];
     const dateLabel = isToday ? "今日识别" : "当日识别";

@@ -100,8 +100,12 @@ export const apiClient = {
         return res.json();
     },
 
-    async getDashboardStats(): Promise<any> {
-        const res = await fetch(`${BACKEND_URL}/api/stats/dashboard`, {
+    async getDashboardStats(date?: number): Promise<any> {
+        let url = `${BACKEND_URL}/api/stats/dashboard`;
+        if (date) {
+            url += `?date=${date}`;
+        }
+        const res = await fetch(url, {
             headers: getHeaders()
         });
         if (!res.ok) throw new Error('Failed to fetch dashboard stats');

@@ -19,7 +19,7 @@ import { hapticFeedback } from '../utils/mobileFeatures';
 import { simulationService } from '../services/simulationService';
 
 export const Dashboard: React.FC = () => {
-    const { stats, setPlates, setTrends, settings } = usePlateStore();
+    const { stats, setPlates, setTrends, setStats, settings } = usePlateStore();
     const [mode, setMode] = useState<'camera' | 'upload'>('camera');
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [selectedCategory, setSelectedCategory] = useState<{ type: string, label: string } | null>(null);
@@ -44,10 +44,10 @@ export const Dashboard: React.FC = () => {
                 const start = new Date(selectedDate).setHours(0, 0, 0, 0);
                 const end = new Date(selectedDate).setHours(23, 59, 59, 999);
                 
-                // 并行请求历史记录和趋势数据
+                // 并行请求历史记录和趋势数据，传递所选日期
                 const [groups, dashboardStats] = await Promise.all([
                     apiClient.getHistory(start, end, undefined, 'plate'), // 使用分组查询
-                    apiClient.getDashboardStats().catch(err => {
+                    apiClient.getDashboardStats(start).catch(err => {
                         console.warn("Failed to fetch dashboard stats:", err);
                         return null;
                     })
@@ -56,8 +56,16 @@ export const Dashboard: React.FC = () => {
                 // setPlates 现在可以处理分组数据
                 setPlates(groups);
                 
-                if (dashboardStats && dashboardStats.trends) {
-                    setTrends(dashboardStats.trends);
+                if (dashboardStats) {
+                    // 更新统计数据和趋势
+                    setStats({
+                        total: dashboardStats.total,
+                        blue: dashboardStats.blue,
+                        green: dashboardStats.green,
+                        yellow: dashboardStats.yellow,
+                        other: dashboardStats.other,
+                        trends: dashboardStats.trends
+                    });
                 }
             } catch (e) {
                 console.error("Failed to fetch history:", e);
@@ -85,7 +93,7 @@ export const Dashboard: React.FC = () => {
             if (interval) clearInterval(interval);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [selectedDate, setPlates]);
+    }, [selectedDate, setPlates, setStats]);
 
     const handleModeChange = (newMode: 'camera' | 'upload') => {
         if (settings.enableHaptics) hapticFeedback('light');
@@ -134,7 +142,7 @@ export const Dashboard: React.FC = () => {
             {/* 1. Stat Cards Row */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <StatCard
-                    label="今日识别"
+                    label={selectedDate === new Date().toISOString().split('T')[0] ? "今日识别" : "当日识别"}
                     value={stats.total}
                     icon={<Activity size={20} />}
                     color="bg-blue-500"

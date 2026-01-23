@@ -4,46 +4,50 @@ import { DashboardStats } from '../types';
 
 export const getDashboardStats = async (req: Request, res: Response) => {
     try {
-        // 使用新的分组查询，统计不重复的车牌号
-        const allGroups = await getPlateGroups();
+        // 获取日期参数，如果未提供则使用今天
+        const { date } = req.query;
+        const selectedDate = date ? new Date(Number(date)) : new Date();
         
-        // 计算当前总数（不重复的车牌数）
-        const total = allGroups.length;
-        const blue = allGroups.filter(g => g.plateType === 'blue').length;
-        const green = allGroups.filter(g => g.plateType === 'green').length;
-        const yellow = allGroups.filter(g => g.plateType === 'yellow').length;
+        // 计算所选日期的开始和结束时间
+        const selectedStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 0, 0, 0, 0);
+        const selectedEnd = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 23, 59, 59, 999);
+        
+        // 获取所选日期的数据（不重复车牌）
+        const selectedGroups = await getPlateGroups({
+            start: selectedStart.getTime(),
+            end: selectedEnd.getTime()
+        });
+        
+        // 计算所选日期的统计数据（不重复的车牌数）
+        const total = selectedGroups.length;
+        const blue = selectedGroups.filter(g => g.plateType === 'blue').length;
+        const green = selectedGroups.filter(g => g.plateType === 'green').length;
+        const yellow = selectedGroups.filter(g => g.plateType === 'yellow').length;
         const other = total - blue - green - yellow;
 
-        // 计算趋势：比较今天和昨天的数据
-        const now = new Date();
-        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-        const todayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-        const yesterdayStart = new Date(todayStart);
-        yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-        const yesterdayEnd = new Date(todayEnd);
-        yesterdayEnd.setDate(yesterdayEnd.getDate() - 1);
+        // 计算趋势：比较所选日期和前一天的数据
+        const previousDayStart = new Date(selectedStart);
+        previousDayStart.setDate(previousDayStart.getDate() - 1);
+        const previousDayEnd = new Date(selectedEnd);
+        previousDayEnd.setDate(previousDayEnd.getDate() - 1);
 
-        // 获取今天的数据（不重复车牌）
-        const todayGroups = await getPlateGroups({
-            start: todayStart.getTime(),
-            end: todayEnd.getTime()
-        });
-        const todayTotal = todayGroups.length;
-        const todayBlue = todayGroups.filter(g => g.plateType === 'blue').length;
-        const todayGreen = todayGroups.filter(g => g.plateType === 'green').length;
-        const todayYellow = todayGroups.filter(g => g.plateType === 'yellow').length;
-        const todayOther = todayTotal - todayBlue - todayGreen - todayYellow;
+        // 获取所选日期的数据（不重复车牌）
+        const selectedDayTotal = total;
+        const selectedDayBlue = blue;
+        const selectedDayGreen = green;
+        const selectedDayYellow = yellow;
+        const selectedDayOther = other;
 
-        // 获取昨天的数据（不重复车牌）
-        const yesterdayGroups = await getPlateGroups({
-            start: yesterdayStart.getTime(),
-            end: yesterdayEnd.getTime()
+        // 获取前一天的数据（不重复车牌）
+        const previousDayGroups = await getPlateGroups({
+            start: previousDayStart.getTime(),
+            end: previousDayEnd.getTime()
         });
-        const yesterdayTotal = yesterdayGroups.length;
-        const yesterdayBlue = yesterdayGroups.filter(g => g.plateType === 'blue').length;
-        const yesterdayGreen = yesterdayGroups.filter(g => g.plateType === 'green').length;
-        const yesterdayYellow = yesterdayGroups.filter(g => g.plateType === 'yellow').length;
-        const yesterdayOther = yesterdayTotal - yesterdayBlue - yesterdayGreen - yesterdayYellow;
+        const previousDayTotal = previousDayGroups.length;
+        const previousDayBlue = previousDayGroups.filter(g => g.plateType === 'blue').length;
+        const previousDayGreen = previousDayGroups.filter(g => g.plateType === 'green').length;
+        const previousDayYellow = previousDayGroups.filter(g => g.plateType === 'yellow').length;
+        const previousDayOther = previousDayTotal - previousDayBlue - previousDayGreen - previousDayYellow;
 
         // 计算趋势百分比
         const calculateTrend = (current: number, previous: number): { value: string, direction: "up" | "down" | "neutral" } => {
@@ -72,10 +76,10 @@ export const getDashboardStats = async (req: Request, res: Response) => {
             yellow,
             other,
             trends: {
-                total: calculateTrend(todayTotal, yesterdayTotal),
-                blue: calculateTrend(todayBlue, yesterdayBlue),
-                green: calculateTrend(todayGreen, yesterdayGreen),
-                other: calculateTrend(todayOther + todayYellow, yesterdayOther + yesterdayYellow)
+                total: calculateTrend(selectedDayTotal, previousDayTotal),
+                blue: calculateTrend(selectedDayBlue, previousDayBlue),
+                green: calculateTrend(selectedDayGreen, previousDayGreen),
+                other: calculateTrend(selectedDayOther + selectedDayYellow, previousDayOther + previousDayYellow)
             }
         };
 
