@@ -1,0 +1,166 @@
+import React, { useEffect, useState } from 'react';
+import { Clock, MapPin, Camera } from 'lucide-react';
+import { apiClient } from '../api/client';
+import { PlateGroup } from '../types/plate';
+import { usePlateStore } from '../store/plateStore';
+
+interface RecentPlatesListProps {
+    date?: string; // 可选的日期参数，undefined 表示总量模式
+    limit?: number; // 显示的数量限制，默认10
+}
+
+export const RecentPlatesList: React.FC<RecentPlatesListProps> = ({ date, limit = 10 }) => {
+    const [recentPlates, setRecentPlates] = useState<PlateGroup[]>([]);
+    const [loading, setLoading] = useState(true);
+    const { settings } = usePlateStore();
+
+    useEffect(() => {
+        const fetchRecentPlates = async () => {
+            setLoading(true);
+            try {
+                if (settings.isDemoMode) {
+                    // 生成模拟数据
+                    const mockPlates: PlateGroup[] = Array.from({ length: limit }, (_, i) => ({
+                        plateNumber: `粤${String.fromCharCode(65 + i)}${Math.floor(Math.random() * 10000)}`,
+                        plateType: ['blue', 'green', 'yellow'][Math.floor(Math.random() * 3)] as any,
+                        firstSeen: Date.now() - i * 60000,
+                        lastSeen: Date.now() - i * 30000,
+                        totalCount: Math.floor(Math.random() * 10) + 1,
+                        records: [],
+                        averageConfidence: 0.8 + Math.random() * 0.2,
+                        locations: ['入口A', '出口B'],
+                        cameras: ['摄像头1']
+                    }));
+                    setRecentPlates(mockPlates);
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                } else {
+                    let start: number | undefined;
+                    let end: number | undefined;
+                    
+                    if (date) {
+                        // 日期模式：获取指定日期的数据
+                        start = new Date(date).setHours(0, 0, 0, 0);
+                        end = new Date(date).setHours(23, 59, 59, 999);
+                    }
+                    
+                    // 获取分组数据
+                    const groups = await apiClient.getHistory(start, end, undefined, 'plate');
+                    
+                    // 按最后识别时间排序，取最近的
+                    const sorted = (groups as PlateGroup[])
+                        .sort((a, b) => b.lastSeen - a.lastSeen)
+                        .slice(0, limit);
+                    
+                    setRecentPlates(sorted);
+                }
+            } catch (error) {
+                console.error('加载最近识别记录失败', error);
+                if (settings.isDemoMode) {
+                    setRecentPlates([]);
+                }
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchRecentPlates();
+        
+        // 如果是今天，每5秒刷新一次
+        const isToday = date === new Date().toISOString().split('T')[0];
+        let interval: number;
+        if (isToday && !settings.isDemoMode) {
+            interval = window.setInterval(fetchRecentPlates, 5000);
+        }
+
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [date, limit, settings.isDemoMode]);
+
+    if (loading) return (
+        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col h-full">
+            <div className="flex items-center gap-2 mb-4 shrink-0">
+                <Clock className="text-blue-600" size={20} />
+                <h3 className="font-semibold text-gray-800">最近识别</h3>
+            </div>
+            <div className="flex-1 flex items-center justify-center text-gray-400">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            </div>
+        </div>
+    );
+
+    if (recentPlates.length === 0) return (
+        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col h-full">
+            <div className="flex items-center gap-2 mb-4 shrink-0">
+                <Clock className="text-blue-600" size={20} />
+                <h3 className="font-semibold text-gray-800">最近识别</h3>
+            </div>
+            <div className="flex-1 flex items-center justify-center text-gray-400">暂无数据</div>
+        </div>
+    );
+
+    return (
+        <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col h-full">
+            <div className="flex items-center gap-2 mb-4 shrink-0">
+                <Clock className="text-blue-600" size={20} />
+                <h3 className="font-semibold text-gray-800">最近识别</h3>
+                <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full ml-auto">
+                    {recentPlates.length} 条
+                </span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto space-y-3 min-h-0">
+                {recentPlates.map((group, index) => {
+                    const timeAgo = Date.now() - group.lastSeen;
+                    const minutesAgo = Math.floor(timeAgo / 60000);
+                    const hoursAgo = Math.floor(minutesAgo / 60);
+                    const timeText = minutesAgo < 1 ? '刚刚' 
+                        : minutesAgo < 60 ? `${minutesAgo}分钟前`
+                        : hoursAgo < 24 ? `${hoursAgo}小时前`
+                        : `${Math.floor(hoursAgo / 24)}天前`;
+
+                    return (
+                        <div
+                            key={group.plateNumber}
+                            className="p-3 rounded-lg border border-gray-100 hover:border-blue-300 hover:bg-blue-50/30 transition-all"
+                        >
+                            <div className="flex items-start justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                    <span className={`text-sm font-bold font-mono px-2 py-0.5 rounded ${
+                                        group.plateType === 'blue' ? 'bg-blue-600 text-white' :
+                                        group.plateType === 'green' ? 'bg-green-50 text-green-600 border border-green-200' :
+                                        group.plateType === 'yellow' ? 'bg-yellow-500 text-white' :
+                                        'bg-gray-100 text-gray-700'
+                                    }`}>
+                                        {group.plateNumber}
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                        {timeText}
+                                    </span>
+                                </div>
+                                <span className="text-xs text-gray-400">
+                                    #{index + 1}
+                                </span>
+                            </div>
+                            <div className="flex items-center gap-4 text-xs text-gray-500">
+                                {group.locations.length > 0 && (
+                                    <div className="flex items-center gap-1">
+                                        <MapPin size={12} />
+                                        <span>{group.locations[0]}</span>
+                                    </div>
+                                )}
+                                {group.cameras.length > 0 && (
+                                    <div className="flex items-center gap-1">
+                                        <Camera size={12} />
+                                        <span>{group.cameras[0]}</span>
+                                    </div>
+                                )}
+                                <span>置信度: {(group.averageConfidence * 100).toFixed(0)}%</span>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};

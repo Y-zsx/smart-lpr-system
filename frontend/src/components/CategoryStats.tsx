@@ -49,9 +49,9 @@ export const CategoryStats: React.FC<CategoryStatsProps> = ({ onCategoryClick })
     ];
 
     return (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">车辆分类详情</h3>
-            <div className="space-y-3">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 flex flex-col h-full">
+            <h3 className="text-lg font-semibold text-gray-800 mb-4 shrink-0">车辆分类详情</h3>
+            <div className="space-y-3 flex-1 min-h-0">
                 {categories.map((cat) => (
                     <div
                         key={cat.id}
@@ -72,7 +72,7 @@ export const CategoryStats: React.FC<CategoryStatsProps> = ({ onCategoryClick })
                 ))}
             </div>
 
-            <div className="mt-4 pt-4 border-t border-gray-100">
+            <div className="mt-4 pt-4 border-t border-gray-100 shrink-0">
                 <div className="flex justify-between items-center text-sm">
                     <span className="text-gray-500">总计</span>
                     <span className="font-bold text-gray-900">{stats.total} 辆</span>

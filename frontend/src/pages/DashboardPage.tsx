@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { DailyStatsChart } from '../components/DailyStatsChart';
 import { CategoryStats } from '../components/CategoryStats';
 import { PlateHeatmap } from '../components/PlateHeatmap';
+import { HourlyStatsChart } from '../components/HourlyStatsChart';
+import { RecentPlatesList } from '../components/RecentPlatesList';
 import { StatCard } from '../components/StatCard';
 import { usePlateStore } from '../store/plateStore';
 import { Activity, ShieldCheck, Zap, Car, Calendar, Database } from 'lucide-react';
@@ -171,12 +173,17 @@ export const DashboardPage: React.FC = () => {
                 <PlateHeatmap date={dataMode === 'total' ? undefined : selectedDate} />
             </div>
 
-            {/* 3. Category Stats */}
+            {/* 3. Bottom Grid - Category Stats, Hourly Chart, Recent Plates */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-1">
+                <div className="lg:col-span-1 h-[400px]">
                     <CategoryStats onCategoryClick={(type, label) => setSelectedCategory({ type, label })} />
                 </div>
-                {/* 这里可以放一些其他的统计或者留空，或者把上面的图表拉下来 */}
+                <div className="lg:col-span-1 h-[400px]">
+                    <HourlyStatsChart date={dataMode === 'total' ? undefined : selectedDate} />
+                </div>
+                <div className="lg:col-span-1 h-[400px]">
+                    <RecentPlatesList date={dataMode === 'total' ? undefined : selectedDate} limit={8} />
+                </div>
             </div>
 
             {/* Modals */}
