@@ -20,7 +20,7 @@ interface PlateHeatmapProps {
     date?: string; // 可选的日期参数，undefined 表示总量模式
 }
 
-export const PlateHeatmap: React.FC<PlateHeatmapProps> = ({ date }) => {
+export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) => {
     const [viewMode, setViewMode] = useState<'daily' | 'total'>('total');
     const [mapData, setMapData] = useState<{ name: string, value: number }[]>([]);
     const [loading, setLoading] = useState(true);
@@ -173,4 +173,4 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = ({ date }) => {
             </div>
         </div>
     );
-};
+});

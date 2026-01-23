@@ -65,11 +65,11 @@ export const Dashboard: React.FC = () => {
                         })
                 ]);
 
-                // setPlates 现在可以处理分组数据
+                // setPlates 现在可以处理分组数据（store内部会进行比较）
                 setPlates(groups);
                 
                 if (dashboardStats) {
-                    // 更新统计数据和趋势
+                    // 更新统计数据和趋势（store内部会进行比较）
                     setStats({
                         total: dashboardStats.total,
                         blue: dashboardStats.blue,

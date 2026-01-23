@@ -14,7 +14,7 @@ interface DailyStatsChartProps {
     date?: string; // 可选的日期参数，undefined 表示总量模式
 }
 
-export const DailyStatsChart: React.FC<DailyStatsChartProps> = ({ date }) => {
+export const DailyStatsChart: React.FC<DailyStatsChartProps> = React.memo(({ date }) => {
     const [stats, setStats] = useState<DailyStat[]>([]);
     const [loading, setLoading] = useState(true);
     const { settings } = usePlateStore();
@@ -201,4 +201,4 @@ export const DailyStatsChart: React.FC<DailyStatsChartProps> = ({ date }) => {
             </div>
         </div>
     );
-};
+});

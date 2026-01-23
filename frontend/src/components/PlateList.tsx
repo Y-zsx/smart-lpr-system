@@ -1,16 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { usePlateStore } from '../store/plateStore';
 import { Clock, MapPin, Search, Download, FileText, Loader, ChevronRight } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { PlateGroup } from '../types/plate';
 import { PlateDetail } from './PlateDetail';
 import { useToastContext } from '../contexts/ToastContext';
+import { arePlateGroupsEqual } from '../utils/dataComparison';
 
 interface PlateListProps {
     date?: string; // 可选的日期参数，undefined 表示总量模式
 }
 
-export const PlateList: React.FC<PlateListProps> = ({ date }) => {
+export const PlateList: React.FC<PlateListProps> = React.memo(({ date }) => {
     const { settings } = usePlateStore();
     const toast = useToastContext();
     const [searchTerm, setSearchTerm] = useState('');
@@ -18,22 +19,40 @@ export const PlateList: React.FC<PlateListProps> = ({ date }) => {
     const [plateGroups, setPlateGroups] = useState<PlateGroup[]>([]);
     const [selectedGroup, setSelectedGroup] = useState<PlateGroup | null>(null);
     const [loading, setLoading] = useState(true);
+    const isInitialLoad = useRef(true);
 
     // 从 API 获取分组数据
     useEffect(() => {
         const fetchGroups = async () => {
-            setLoading(true);
+            // 只在首次加载时显示loading，后续刷新静默进行
+            if (isInitialLoad.current) {
+                setLoading(true);
+            }
+            
             try {
                 const start = date ? new Date(date).setHours(0, 0, 0, 0) : undefined;
                 const end = date ? new Date(date).setHours(23, 59, 59, 999) : undefined;
                 
                 const groups = await apiClient.getHistory(start, end, undefined, 'plate');
-                setPlateGroups(Array.isArray(groups) ? groups : []);
+                const newGroups = Array.isArray(groups) ? groups : [];
+                
+                // 只在数据真正变化时更新
+                setPlateGroups(prev => {
+                    if (arePlateGroupsEqual(prev, newGroups)) {
+                        return prev; // 返回旧引用，避免重新渲染
+                    }
+                    return newGroups;
+                });
             } catch (error) {
                 console.error('获取车牌分组数据失败:', error);
-                setPlateGroups([]);
+                if (isInitialLoad.current) {
+                    setPlateGroups([]);
+                }
             } finally {
-                setLoading(false);
+                if (isInitialLoad.current) {
+                    setLoading(false);
+                    isInitialLoad.current = false;
+                }
             }
         };
 
@@ -48,6 +67,7 @@ export const PlateList: React.FC<PlateListProps> = ({ date }) => {
 
         return () => {
             if (interval) clearInterval(interval);
+            isInitialLoad.current = true; // 重置初始加载状态
         };
     }, [date]);
 
@@ -214,4 +234,4 @@ export const PlateList: React.FC<PlateListProps> = ({ date }) => {
             )}
         </div>
     );
-};
+});

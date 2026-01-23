@@ -1,26 +1,34 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Clock, MapPin, Camera } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { PlateGroup } from '../types/plate';
 import { usePlateStore } from '../store/plateStore';
+import { arePlateGroupsEqual } from '../utils/dataComparison';
 
 interface RecentPlatesListProps {
     date?: string; // 可选的日期参数，undefined 表示总量模式
     limit?: number; // 显示的数量限制，默认10
 }
 
-export const RecentPlatesList: React.FC<RecentPlatesListProps> = ({ date, limit = 10 }) => {
+export const RecentPlatesList: React.FC<RecentPlatesListProps> = React.memo(({ date, limit = 10 }) => {
     const [recentPlates, setRecentPlates] = useState<PlateGroup[]>([]);
     const [loading, setLoading] = useState(true);
     const { settings } = usePlateStore();
+    const isInitialLoad = useRef(true);
 
     useEffect(() => {
         const fetchRecentPlates = async () => {
-            setLoading(true);
+            // 只在首次加载时显示loading，后续刷新静默进行
+            if (isInitialLoad.current) {
+                setLoading(true);
+            }
+            
             try {
+                let newPlates: PlateGroup[] = [];
+                
                 if (settings.isDemoMode) {
                     // 生成模拟数据
-                    const mockPlates: PlateGroup[] = Array.from({ length: limit }, (_, i) => ({
+                    newPlates = Array.from({ length: limit }, (_, i) => ({
                         plateNumber: `粤${String.fromCharCode(65 + i)}${Math.floor(Math.random() * 10000)}`,
                         plateType: ['blue', 'green', 'yellow'][Math.floor(Math.random() * 3)] as any,
                         firstSeen: Date.now() - i * 60000,
@@ -31,8 +39,10 @@ export const RecentPlatesList: React.FC<RecentPlatesListProps> = ({ date, limit 
                         locations: ['入口A', '出口B'],
                         cameras: ['摄像头1']
                     }));
-                    setRecentPlates(mockPlates);
-                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    if (isInitialLoad.current) {
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
                 } else {
                     let start: number | undefined;
                     let end: number | undefined;
@@ -47,19 +57,28 @@ export const RecentPlatesList: React.FC<RecentPlatesListProps> = ({ date, limit 
                     const groups = await apiClient.getHistory(start, end, undefined, 'plate');
                     
                     // 按最后识别时间排序，取最近的
-                    const sorted = (groups as PlateGroup[])
+                    newPlates = (groups as PlateGroup[])
                         .sort((a, b) => b.lastSeen - a.lastSeen)
                         .slice(0, limit);
-                    
-                    setRecentPlates(sorted);
                 }
+                
+                // 只在数据真正变化时更新
+                setRecentPlates(prev => {
+                    if (arePlateGroupsEqual(prev, newPlates)) {
+                        return prev; // 返回旧引用，避免重新渲染
+                    }
+                    return newPlates;
+                });
             } catch (error) {
                 console.error('加载最近识别记录失败', error);
-                if (settings.isDemoMode) {
+                if (settings.isDemoMode || isInitialLoad.current) {
                     setRecentPlates([]);
                 }
             } finally {
-                setLoading(false);
+                if (isInitialLoad.current) {
+                    setLoading(false);
+                    isInitialLoad.current = false;
+                }
             }
         };
 
@@ -74,6 +93,7 @@ export const RecentPlatesList: React.FC<RecentPlatesListProps> = ({ date, limit 
 
         return () => {
             if (interval) clearInterval(interval);
+            isInitialLoad.current = true; // 重置初始加载状态
         };
     }, [date, limit, settings.isDemoMode]);
 
@@ -163,4 +183,4 @@ export const RecentPlatesList: React.FC<RecentPlatesListProps> = ({ date, limit 
             </div>
         </div>
     );
-};
+});

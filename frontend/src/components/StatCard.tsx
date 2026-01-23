@@ -9,7 +9,7 @@ interface StatCardProps {
     trendDirection?: 'up' | 'down' | 'neutral';
 }
 
-export const StatCard: React.FC<StatCardProps> = ({ label, value, icon, color, trend, trendDirection }) => (
+export const StatCard: React.FC<StatCardProps> = React.memo(({ label, value, icon, color, trend, trendDirection }) => (
     <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col justify-between transition-all hover:shadow-md active:scale-95 touch-manipulation h-full">
         <div className="flex items-center justify-between mb-2">
             <div className={`p-2.5 rounded-lg ${color} bg-opacity-10`}>
@@ -29,4 +29,4 @@ export const StatCard: React.FC<StatCardProps> = ({ label, value, icon, color, t
             <p className="text-sm text-gray-500">{label}</p>
         </div>
     </div>
-);
+));

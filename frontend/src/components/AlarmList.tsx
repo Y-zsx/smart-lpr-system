@@ -15,7 +15,7 @@ interface AlarmGroup {
     };
 }
 
-export const AlarmList: React.FC = () => {
+export const AlarmList: React.FC = React.memo(() => {
     const { alarms, fetchAlarms } = useAlarmStore();
     const [selectedPlate, setSelectedPlate] = useState<string | null>(null);
 
@@ -179,4 +179,4 @@ export const AlarmList: React.FC = () => {
             )}
         </div>
     );
-};
+});

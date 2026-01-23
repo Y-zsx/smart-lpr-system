@@ -6,7 +6,7 @@ interface CategoryStatsProps {
     onCategoryClick: (type: string, label: string) => void;
 }
 
-export const CategoryStats: React.FC<CategoryStatsProps> = ({ onCategoryClick }) => {
+export const CategoryStats: React.FC<CategoryStatsProps> = React.memo(({ onCategoryClick }) => {
     const { stats } = usePlateStore();
 
     const categories = [
@@ -90,4 +90,4 @@ export const CategoryStats: React.FC<CategoryStatsProps> = ({ onCategoryClick })
             </div>
         </div>
     );
-};
+});

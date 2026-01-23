@@ -9,7 +9,7 @@ interface HourlyStatsChartProps {
     date?: string; // 可选的日期参数，undefined 表示总量模式
 }
 
-export const HourlyStatsChart: React.FC<HourlyStatsChartProps> = ({ date }) => {
+export const HourlyStatsChart: React.FC<HourlyStatsChartProps> = React.memo(({ date }) => {
     const [hourlyData, setHourlyData] = useState<number[]>(new Array(24).fill(0));
     const [loading, setLoading] = useState(true);
     const { settings } = usePlateStore();
@@ -176,4 +176,4 @@ export const HourlyStatsChart: React.FC<HourlyStatsChartProps> = ({ date }) => {
             </div>
         </div>
     );
-};
+});
