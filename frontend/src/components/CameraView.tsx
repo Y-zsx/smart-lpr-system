@@ -255,6 +255,10 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         if (isLocal || isFile) {
             setHasPermission(false);
         }
+        // 更新摄像头状态为离线
+        if (currentCamera) {
+            updateCameraStatus(currentCamera.id, 'offline');
+        }
     };
 
     const hasMotion = (context: CanvasRenderingContext2D, width: number, height: number): boolean => {

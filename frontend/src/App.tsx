@@ -11,6 +11,8 @@ import { usePlateStore } from './store/plateStore';
 import { simulationService } from './services/simulationService';
 import { Settings } from 'lucide-react';
 import { hapticFeedback } from './utils/mobileFeatures';
+import { ToastProvider } from './contexts/ToastContext';
+import { ConfirmProvider } from './contexts/ConfirmContext';
 
 function App() {
     const { settings } = usePlateStore();
@@ -41,22 +43,26 @@ function App() {
     );
 
     return (
-        <Router>
-            <MainLayout actions={headerActions}>
-                <Routes>
-                    <Route path="/" element={<DashboardPage />} />
-                    <Route path="/monitor" element={<LiveMonitorPage />} />
-                    <Route path="/records" element={<RecordsPage />} />
-                    <Route path="/alarms" element={<AlarmsPage />} />
-                    <Route path="/settings" element={<SettingsPage />} />
-                    <Route path="*" element={<Navigate to="/" replace />} />
-                </Routes>
-                
-                {showSettings && (
-                    <SettingsModal onClose={() => setShowSettings(false)} />
-                )}
-            </MainLayout>
-        </Router>
+        <ToastProvider>
+            <ConfirmProvider>
+                <Router>
+                    <MainLayout actions={headerActions}>
+                        <Routes>
+                            <Route path="/" element={<DashboardPage />} />
+                            <Route path="/monitor" element={<LiveMonitorPage />} />
+                            <Route path="/records" element={<RecordsPage />} />
+                            <Route path="/alarms" element={<AlarmsPage />} />
+                            <Route path="/settings" element={<SettingsPage />} />
+                            <Route path="*" element={<Navigate to="/" replace />} />
+                        </Routes>
+                        
+                        {showSettings && (
+                            <SettingsModal onClose={() => setShowSettings(false)} />
+                        )}
+                    </MainLayout>
+                </Router>
+            </ConfirmProvider>
+        </ToastProvider>
     );
 }
 

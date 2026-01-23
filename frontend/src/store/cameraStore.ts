@@ -33,9 +33,9 @@ export const useCameraStore = create<CameraStore>()(
             cameras: [
                 {
                     id: 'local-default',
-                    name: '本机摄像头 (默认)',
+                    name: '本机摄像头',
                     type: 'local',
-                    status: 'online',
+                    status: 'offline',
                     lastActive: Date.now()
                 }
             ],
@@ -91,30 +91,8 @@ export const useCameraStore = create<CameraStore>()(
                     
                     set({ availableDevices: videoDevices });
                     
-                    // 自动添加新发现的本地摄像头
-                    const state = get();
-                    const existingLocalIds = new Set(
-                        state.cameras
-                            .filter(c => c.type === 'local' && c.deviceId)
-                            .map(c => c.deviceId)
-                    );
-                    
-                    const newLocalCameras = videoDevices
-                        .filter(device => !existingLocalIds.has(device.deviceId))
-                        .map((device, index) => ({
-                            id: `local-${device.deviceId}`,
-                            name: device.label || `摄像头 ${index + 1}`,
-                            type: 'local' as const,
-                            deviceId: device.deviceId,
-                            status: 'offline' as const,
-                            lastActive: Date.now()
-                        }));
-                    
-                    if (newLocalCameras.length > 0) {
-                        set((state) => ({
-                            cameras: [...state.cameras, ...newLocalCameras]
-                        }));
-                    }
+                    // 不自动添加新发现的本地摄像头，只更新设备列表
+                    // 用户可以通过其他方式添加摄像头
                 } catch (error) {
                     console.error('获取摄像头设备列表失败:', error);
                 }

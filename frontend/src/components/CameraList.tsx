@@ -3,9 +3,13 @@ import { useCameraStore, CameraDevice } from '../store/cameraStore';
 import { Video, Globe, Plus, Trash2, Settings, MonitorPlay, FileVideo, RefreshCw, MapPin, X, Edit2 } from 'lucide-react';
 import { LocationPicker } from './LocationPicker';
 import { apiClient } from '../api/client';
+import { useToastContext } from '../contexts/ToastContext';
+import { useConfirmContext } from '../contexts/ConfirmContext';
 
 export const CameraList: React.FC = () => {
     const { cameras, selectedCameraId, selectCamera, addCamera, updateCamera, removeCamera, refreshDevices, availableDevices } = useCameraStore();
+    const toast = useToastContext();
+    const { confirm } = useConfirmContext();
     const [isAdding, setIsAdding] = useState(false);
     const [editingCamera, setEditingCamera] = useState<CameraDevice | null>(null);
     const [addType, setAddType] = useState<'stream' | 'file'>('stream');
@@ -24,22 +28,20 @@ export const CameraList: React.FC = () => {
     const [showLocationPicker, setShowLocationPicker] = useState(false);
     const [locationPickerFor, setLocationPickerFor] = useState<'add' | 'edit'>('add');
 
-    useEffect(() => {
-        // 组件加载时刷新设备列表
-        refreshDevices();
-    }, [refreshDevices]);
+    // 移除自动刷新设备列表，避免自动请求摄像头权限
+    // 用户需要时可以手动点击刷新按钮
 
     const handleAdd = async () => {
         if (!newCam.name) {
-            alert('请输入摄像头名称');
+            toast.warning('请输入摄像头名称');
             return;
         }
         if (addType === 'stream' && !newCam.url) {
-            alert('请输入流地址');
+            toast.warning('请输入流地址');
             return;
         }
         if (addType === 'file' && !newCam.url) {
-            alert('请选择视频文件');
+            toast.warning('请选择视频文件');
             return;
         }
         
@@ -60,9 +62,10 @@ export const CameraList: React.FC = () => {
             setIsAdding(false);
             setNewCam({ name: '', url: '', type: 'stream', location: undefined });
             setAddType('stream');
+            toast.success('摄像头添加成功');
         } catch (error) {
             console.error('添加摄像头失败:', error);
-            alert('添加失败，请重试');
+            toast.error('添加失败，请重试');
         }
     };
 
@@ -97,15 +100,15 @@ export const CameraList: React.FC = () => {
         if (!editingCamera) return;
         
         if (!editCam.name) {
-            alert('请输入摄像头名称');
+            toast.warning('请输入摄像头名称');
             return;
         }
         if (addType === 'stream' && !editCam.url) {
-            alert('请输入流地址');
+            toast.warning('请输入流地址');
             return;
         }
         if (addType === 'file' && !editCam.url) {
-            alert('请选择视频文件');
+            toast.warning('请选择视频文件');
             return;
         }
 
@@ -133,9 +136,10 @@ export const CameraList: React.FC = () => {
             setEditingCamera(null);
             setEditCam({ name: '', url: '', type: 'stream', location: undefined });
             setAddType('stream');
+            toast.success('摄像头更新成功');
         } catch (error) {
             console.error('更新摄像头失败:', error);
-            alert('更新失败，请重试');
+            toast.error('更新失败，请重试');
         }
     };
 
@@ -219,10 +223,25 @@ export const CameraList: React.FC = () => {
                                             <Edit2 size={14} />
                                         </button>
                                         <button
-                                            onClick={(e) => { 
+                                            onClick={async (e) => { 
                                                 e.stopPropagation(); 
-                                                if (confirm(`确定要删除摄像头 "${cam.name}" 吗？`)) {
-                                                    removeCamera(cam.id);
+                                                e.preventDefault();
+                                                try {
+                                                    const result = await confirm({
+                                                        title: '删除摄像头',
+                                                        message: `确定要删除摄像头 "${cam.name}" 吗？`,
+                                                        type: 'danger'
+                                                    });
+                                                    if (result) {
+                                                        // 先调用 API 删除后端数据
+                                                        await apiClient.deleteCamera(cam.id);
+                                                        // 然后更新本地 store
+                                                        removeCamera(cam.id);
+                                                        toast.success('摄像头已删除');
+                                                    }
+                                                } catch (error) {
+                                                    console.error('删除摄像头失败:', error);
+                                                    toast.error('删除失败，请重试');
                                                 }
                                             }}
                                             className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-all"

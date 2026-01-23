@@ -2,6 +2,7 @@ import React from 'react';
 import { PlateGroup } from '../types/plate';
 import { Clock, MapPin, Camera, X, Image as ImageIcon, Trash2, Loader, AlertTriangle } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { useToastContext } from '../contexts/ToastContext';
 
 interface PlateDetailProps {
     group: PlateGroup;
@@ -10,6 +11,7 @@ interface PlateDetailProps {
 }
 
 export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDeleted }) => {
+    const toast = useToastContext();
     const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
     const [deletingRecordId, setDeletingRecordId] = React.useState<string | null>(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = React.useState<{ type: 'record' | 'all', recordId?: string } | null>(null);
@@ -28,9 +30,10 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                 // 如果没有回调，直接关闭弹窗
                 onClose();
             }
+            toast.success('记录已删除');
         } catch (error) {
             console.error('删除记录失败:', error);
-            alert('删除失败，请重试');
+            toast.error('删除失败，请重试');
         } finally {
             setIsDeleting(false);
             setDeletingRecordId(null);
@@ -49,9 +52,10 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                 // 如果没有回调，直接关闭弹窗
                 onClose();
             }
+            toast.success('所有记录已删除');
         } catch (error) {
             console.error('删除所有记录失败:', error);
-            alert('删除失败，请重试');
+            toast.error('删除失败，请重试');
         } finally {
             setIsDeleting(false);
         }

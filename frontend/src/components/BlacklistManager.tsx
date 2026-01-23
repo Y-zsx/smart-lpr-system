@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { apiClient } from '../api/client';
 import { X, Upload, Plus, Trash2, AlertOctagon } from 'lucide-react';
+import { useToastContext } from '../contexts/ToastContext';
+import { useConfirmContext } from '../contexts/ConfirmContext';
 
 interface BlacklistItem {
     id: number;
@@ -10,6 +12,8 @@ interface BlacklistItem {
 }
 
 export const BlacklistManager: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+    const toast = useToastContext();
+    const { confirm } = useConfirmContext();
     const [items, setItems] = useState<BlacklistItem[]>([]);
     const [newItem, setNewItem] = useState({ plate_number: '', reason: '', severity: 'high' });
 
@@ -32,9 +36,15 @@ export const BlacklistManager: React.FC<{ onClose: () => void }> = ({ onClose })
     };
 
     const handleDelete = async (id: number) => {
-        if (!confirm('确定删除?')) return;
+        const result = await confirm({
+            title: '删除黑名单',
+            message: '确定要删除这条黑名单记录吗？',
+            type: 'danger'
+        });
+        if (!result) return;
         await apiClient.deleteBlacklist(id);
         fetchList();
+        toast.success('黑名单已删除');
     };
 
     const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -54,7 +64,7 @@ export const BlacklistManager: React.FC<{ onClose: () => void }> = ({ onClose })
             if (data.length > 0) {
                 await apiClient.addBlacklist(data);
                 fetchList();
-                alert(`成功导入 ${data.length} 条`);
+                toast.success(`成功导入 ${data.length} 条黑名单记录`);
             }
         };
         reader.readAsText(file);

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { MapPin, Search, X } from 'lucide-react';
+import { useToastContext } from '../contexts/ToastContext';
 
 interface LocationPickerProps {
     value?: {
@@ -18,6 +19,7 @@ declare global {
 }
 
 export const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange, onClose }) => {
+    const toast = useToastContext();
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const mapInstanceRef = useRef<any>(null);
     const markerRef = useRef<any>(null);
@@ -35,7 +37,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange,
         const amapSecurityCode = import.meta.env.VITE_AMAP_SECURITY_CODE;
         
         if (!amapKey || amapKey === 'your_amap_api_key_here') {
-            alert('请配置高德地图 API Key！请在 .env 文件中设置 VITE_AMAP_KEY');
+            toast.warning('请配置高德地图 API Key！请在 .env 文件中设置 VITE_AMAP_KEY');
             setIsLoading(false);
             return;
         }
@@ -144,13 +146,13 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange,
                 // 地图加载错误处理
                 map.on('error', (e: any) => {
                     console.error('地图加载错误:', e);
-                    alert('地图加载失败，请检查API Key是否正确或网络连接是否正常');
+                    toast.error('地图加载失败，请检查API Key是否正确或网络连接是否正常');
                     setIsLoading(false);
                 });
 
             } catch (error) {
                 console.error('初始化地图失败:', error);
-                alert('初始化地图失败: ' + (error as Error).message);
+                toast.error('初始化地图失败: ' + (error as Error).message);
                 setIsLoading(false);
             }
         };
@@ -191,7 +193,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange,
                 setTimeout(() => {
                     clearInterval(checkAMap);
                     if (!window.AMap) {
-                        alert('高德地图加载超时，请检查网络连接');
+                        toast.error('高德地图加载超时，请检查网络连接');
                         setIsLoading(false);
                     }
                 }, 10000);
@@ -206,7 +208,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange,
                 // 错误处理
                 script.onerror = () => {
                     console.error('加载高德地图脚本失败');
-                    alert('加载高德地图失败，请检查API Key是否正确');
+                    toast.error('加载高德地图失败，请检查API Key是否正确');
                     setIsLoading(false);
                 };
                 

@@ -4,6 +4,7 @@ import { plateService } from '../services/plateService';
 import { usePlateStore } from '../store/plateStore';
 import { LicensePlate } from '../types/plate';
 import { apiClient } from '../api/client';
+import { useToastContext } from '../contexts/ToastContext';
 
 interface FileItem {
     id: string;
@@ -15,6 +16,7 @@ interface FileItem {
 }
 
 export const FileUpload: React.FC = () => {
+    const toast = useToastContext();
     const [files, setFiles] = useState<FileItem[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -38,7 +40,7 @@ export const FileUpload: React.FC = () => {
     const addFiles = (newFiles: File[]) => {
         const validFiles = newFiles.filter(file => file.type.startsWith('image/'));
         if (validFiles.length !== newFiles.length) {
-            alert('部分文件不是图片，已自动过滤');
+            toast.warning('部分文件不是图片，已自动过滤');
         }
 
         const fileItems: FileItem[] = validFiles.map(file => ({

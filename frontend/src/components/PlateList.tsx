@@ -4,6 +4,7 @@ import { Clock, MapPin, Search, Download, FileText, Loader, ChevronRight } from 
 import { apiClient } from '../api/client';
 import { PlateGroup } from '../types/plate';
 import { PlateDetail } from './PlateDetail';
+import { useToastContext } from '../contexts/ToastContext';
 
 interface PlateListProps {
     date?: string; // 可选的日期参数，undefined 表示总量模式
@@ -11,6 +12,7 @@ interface PlateListProps {
 
 export const PlateList: React.FC<PlateListProps> = ({ date }) => {
     const { settings } = usePlateStore();
+    const toast = useToastContext();
     const [searchTerm, setSearchTerm] = useState('');
     const [isExporting, setIsExporting] = useState(false);
     const [plateGroups, setPlateGroups] = useState<PlateGroup[]>([]);
@@ -75,9 +77,10 @@ export const PlateList: React.FC<PlateListProps> = ({ date }) => {
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(url);
+            toast.success('导出成功');
         } catch (error) {
             console.error('Export failed:', error);
-            alert('导出失败，请重试');
+            toast.error('导出失败，请重试');
         } finally {
             setIsExporting(false);
         }
