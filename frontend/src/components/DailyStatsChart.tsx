@@ -11,7 +11,7 @@ interface DailyStat {
 }
 
 interface DailyStatsChartProps {
-    date: string;
+    date?: string; // 可选的日期参数，undefined 表示总量模式
 }
 
 export const DailyStatsChart: React.FC<DailyStatsChartProps> = ({ date }) => {
@@ -37,10 +37,39 @@ export const DailyStatsChart: React.FC<DailyStatsChartProps> = ({ date }) => {
                     setStats(mockStats);
                     await new Promise(resolve => setTimeout(resolve, 500)); // 模拟网络延迟
                 } else {
-                    const endDate = new Date(date).setHours(23, 59, 59, 999);
-                    const data = await apiClient.getDailyStats(endDate);
-                    // 后端返回的数据已经是按日期升序排列（从旧到新），直接使用
-                    setStats(data);
+                    if (date) {
+                        // 日期模式：显示近7天趋势
+                        const endDate = new Date(date).setHours(23, 59, 59, 999);
+                        const data = await apiClient.getDailyStats(endDate);
+                        // 后端返回的数据已经是按日期升序排列（从旧到新），直接使用
+                        setStats(data);
+                    } else {
+                        // 总量模式：显示所有历史数据的累计趋势
+                        // 获取所有数据并按日期分组统计
+                        const allGroups = await apiClient.getHistory(undefined, undefined, undefined, 'plate');
+                        const dateMap = new Map<string, number>();
+                        
+                        // 按日期统计不重复车牌数
+                        (allGroups as any[]).forEach((group: any) => {
+                            const dateStr = new Date(group.firstSeen).toISOString().split('T')[0];
+                            if (!dateMap.has(dateStr)) {
+                                dateMap.set(dateStr, 0);
+                            }
+                            dateMap.set(dateStr, dateMap.get(dateStr)! + 1);
+                        });
+                        
+                        // 转换为数组并按日期排序
+                        const statsArray = Array.from(dateMap.entries())
+                            .map(([date, count]) => ({ date, count }))
+                            .sort((a, b) => a.date.localeCompare(b.date));
+                        
+                        // 如果数据点太多，只显示最近30天
+                        if (statsArray.length > 30) {
+                            setStats(statsArray.slice(-30));
+                        } else {
+                            setStats(statsArray);
+                        }
+                    }
                 }
             } catch (error) {
                 console.error('加载统计数据失败', error);
@@ -138,7 +167,7 @@ export const DailyStatsChart: React.FC<DailyStatsChartProps> = ({ date }) => {
         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm h-full flex flex-col">
             <div className="flex items-center gap-2 mb-4">
                 <BarChart3 className="text-blue-600" size={20} />
-                <h3 className="font-semibold text-gray-800">每日识别趋势 (近7天)</h3>
+                <h3 className="font-semibold text-gray-800">{date ? "每日识别趋势 (近7天)" : "历史识别趋势"}</h3>
             </div>
             <div className="flex-1 flex items-center justify-center text-gray-400 min-h-[200px]">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
@@ -150,7 +179,7 @@ export const DailyStatsChart: React.FC<DailyStatsChartProps> = ({ date }) => {
         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm h-full flex flex-col">
             <div className="flex items-center gap-2 mb-4">
                 <BarChart3 className="text-blue-600" size={20} />
-                <h3 className="font-semibold text-gray-800">每日识别趋势 (近7天)</h3>
+                <h3 className="font-semibold text-gray-800">{date ? "每日识别趋势 (近7天)" : "历史识别趋势"}</h3>
             </div>
             <div className="flex-1 flex items-center justify-center text-gray-400 min-h-[200px]">暂无数据</div>
         </div>
@@ -160,7 +189,7 @@ export const DailyStatsChart: React.FC<DailyStatsChartProps> = ({ date }) => {
         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm h-full flex flex-col">
             <div className="flex items-center gap-2 mb-4">
                 <BarChart3 className="text-blue-600" size={20} />
-                <h3 className="font-semibold text-gray-800">每日识别趋势 (近7天)</h3>
+                <h3 className="font-semibold text-gray-800">{date ? "每日识别趋势 (近7天)" : "历史识别趋势"}</h3>
             </div>
 
             <div className="flex-1 min-h-[200px]">

@@ -6,7 +6,7 @@ import { PlateGroup } from '../types/plate';
 import { PlateDetail } from './PlateDetail';
 
 interface PlateListProps {
-    date?: string;
+    date?: string; // 可选的日期参数，undefined 表示总量模式
 }
 
 export const PlateList: React.FC<PlateListProps> = ({ date }) => {

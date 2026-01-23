@@ -74,7 +74,7 @@ export const CategoryStats: React.FC<CategoryStatsProps> = ({ onCategoryClick })
 
             <div className="mt-4 pt-4 border-t border-gray-100">
                 <div className="flex justify-between items-center text-sm">
-                    <span className="text-gray-500">今日总计</span>
+                    <span className="text-gray-500">总计</span>
                     <span className="font-bold text-gray-900">{stats.total} 辆</span>
                 </div>
                 <div className="mt-2 h-2 bg-gray-100 rounded-full overflow-hidden flex">

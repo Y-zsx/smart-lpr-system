@@ -17,7 +17,7 @@ const PROVINCE_MAP: Record<string, string> = {
 };
 
 interface PlateHeatmapProps {
-    date: string;
+    date?: string; // 可选的日期参数，undefined 表示总量模式
 }
 
 export const PlateHeatmap: React.FC<PlateHeatmapProps> = ({ date }) => {
@@ -59,8 +59,10 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = ({ date }) => {
                     setMapData(mockData);
                     await new Promise(resolve => setTimeout(resolve, 500));
                 } else {
-                    const timestamp = new Date(date).getTime();
-                    const stats = await apiClient.getRegionStats(viewMode, timestamp);
+                    // 如果是总量模式，强制使用 total 模式
+                    const actualViewMode = date ? viewMode : 'total';
+                    const timestamp = date ? new Date(date).getTime() : undefined;
+                    const stats = await apiClient.getRegionStats(actualViewMode, timestamp);
                     // stats 格式为 [{province: '苏', count: 10}, ...]
 
                     const formattedData = stats.map((item: any) => ({
@@ -130,28 +132,30 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = ({ date }) => {
                     <Map size={20} className="text-blue-600" />
                     车牌归属地热力图
                 </h3>
-                <div className="flex bg-gray-100 p-1 rounded-lg">
-                    <button
-                        onClick={() => setViewMode('daily')}
-                        className={`px-3 py-1 text-sm rounded-md transition-all flex items-center gap-1 ${viewMode === 'daily'
-                            ? 'bg-white text-blue-600 shadow-sm font-medium'
-                            : 'text-gray-500 hover:text-gray-700'
-                            }`}
-                    >
-                        <Calendar size={14} />
-                        {date === new Date().toISOString().split('T')[0] ? '今日数据' : '选中日数据'}
-                    </button>
-                    <button
-                        onClick={() => setViewMode('total')}
-                        className={`px-3 py-1 text-sm rounded-md transition-all flex items-center gap-1 ${viewMode === 'total'
-                            ? 'bg-white text-blue-600 shadow-sm font-medium'
-                            : 'text-gray-500 hover:text-gray-700'
-                            }`}
-                    >
-                        <Database size={14} />
-                        历史总量
-                    </button>
-                </div>
+                {date && (
+                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                        <button
+                            onClick={() => setViewMode('daily')}
+                            className={`px-3 py-1 text-sm rounded-md transition-all flex items-center gap-1 ${viewMode === 'daily'
+                                ? 'bg-white text-blue-600 shadow-sm font-medium'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            <Calendar size={14} />
+                            {date === new Date().toISOString().split('T')[0] ? '今日数据' : '选中日数据'}
+                        </button>
+                        <button
+                            onClick={() => setViewMode('total')}
+                            className={`px-3 py-1 text-sm rounded-md transition-all flex items-center gap-1 ${viewMode === 'total'
+                                ? 'bg-white text-blue-600 shadow-sm font-medium'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            <Database size={14} />
+                            历史总量
+                        </button>
+                    </div>
+                )}
             </div>
 
             <div className="flex-1 min-h-[400px] relative">
