@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Alarm } from '../store/alarmStore';
-import { Clock, MapPin, X, Image as ImageIcon, AlertTriangle, Route } from 'lucide-react';
+import { Alarm, useAlarmStore } from '../store/alarmStore';
+import { Clock, MapPin, X, Image as ImageIcon, AlertTriangle, Route, CheckCircle, Archive, Trash2 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { AlarmPathReplay } from './AlarmPathReplay';
+import { useConfirmContext } from '../contexts/ConfirmContext';
+import { useToastContext } from '../contexts/ToastContext';
 
 interface AlarmDetailProps {
     plateNumber: string;
@@ -13,6 +15,9 @@ interface AlarmDetailProps {
 export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, onClose }) => {
     const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
     const [showPathReplay, setShowPathReplay] = useState(false);
+    const { markAsRead, deleteAlarm, deleteAlarmsByPlate } = useAlarmStore();
+    const { confirm } = useConfirmContext();
+    const toast = useToastContext();
 
     // 格式化告警原因，去掉 "Blacklisted: " 前缀
     const formatReason = (reason: string): string => {
@@ -38,6 +43,45 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
     // 检查是否有位置信息的告警
     const hasLocationData = alarms.some(alarm => alarm.location);
 
+    const handleMarkAsRead = async (id: number) => {
+        try {
+            await markAsRead(id);
+            toast.success('已标记为已处理');
+        } catch (error) {
+            console.error('Failed to mark as read:', error);
+            toast.error('标记失败');
+        }
+    };
+
+    const handleDelete = async (id: number) => {
+        const result = await confirm({
+            title: '归档告警',
+            message: '确定要归档这条告警记录吗？归档后该告警将不再显示，但原始识别记录仍会保留。',
+            type: 'info'
+        });
+        if (result) {
+            await deleteAlarm(id);
+            toast.success('告警记录已归档');
+            // 如果删除了最后一条告警，关闭弹窗
+            if (alarms.length <= 1) {
+                onClose();
+            }
+        }
+    };
+
+    const handleDeleteAll = async () => {
+        const result = await confirm({
+            title: '清空告警',
+            message: `确定要归档车牌 ${plateNumber} 的所有告警记录吗？原始识别记录仍会保留。`,
+            type: 'info'
+        });
+        if (result) {
+            await deleteAlarmsByPlate(plateNumber);
+            toast.success('所有告警记录已归档');
+            onClose();
+        }
+    };
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
@@ -60,8 +104,8 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                 </div>
 
                 {/* Action Buttons */}
-                {hasLocationData && (
-                    <div className="p-4 border-b border-gray-200 shrink-0">
+                <div className="p-4 border-b border-gray-200 shrink-0 flex gap-3">
+                    {hasLocationData && (
                         <button
                             onClick={() => setShowPathReplay(true)}
                             className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
@@ -69,8 +113,15 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                             <Route size={18} />
                             查看路径重现
                         </button>
-                    </div>
-                )}
+                    )}
+                    <button
+                        onClick={handleDeleteAll}
+                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors ml-auto"
+                    >
+                        <Archive size={18} />
+                        归档所有告警
+                    </button>
+                </div>
 
                 {/* Info Cards */}
                 <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0 border-b border-gray-200">
@@ -123,9 +174,13 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                                             }`}>
                                                 {alarm.severity === 'high' ? '严重' : alarm.severity === 'medium' ? '警告' : '提示'}
                                             </span>
-                                            {!alarm.is_read && (
+                                            {alarm.is_read === 0 ? (
                                                 <span className="text-xs bg-red-500 text-white px-2 py-0.5 rounded-full">
                                                     未处理
+                                                </span>
+                                            ) : (
+                                                <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full flex items-center gap-1">
+                                                    <CheckCircle size={10} /> 已处理
                                                 </span>
                                             )}
                                             <div className="flex items-center gap-1 text-xs text-gray-500">
@@ -147,18 +202,39 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                                             </div>
                                         )}
                                     </div>
-                                    {alarm.image_path && (
+                                    
+                                    <div className="flex items-center gap-2">
+                                        {alarm.is_read === 0 && (
+                                            <button
+                                                onClick={() => handleMarkAsRead(alarm.id)}
+                                                className="p-2 bg-white hover:bg-green-50 text-green-600 rounded-lg border border-gray-200 transition-colors flex-shrink-0"
+                                                title="标记为已处理"
+                                            >
+                                                <CheckCircle size={18} />
+                                            </button>
+                                        )}
+                                        
+                                        {alarm.image_path && (
+                                            <button
+                                                onClick={() => {
+                                                    const imageUrl = apiClient.getImageUrl(alarm.image_path);
+                                                    setSelectedImage(imageUrl);
+                                                }}
+                                                className="p-2 bg-white hover:bg-blue-50 text-blue-600 rounded-lg border border-gray-200 transition-colors flex-shrink-0"
+                                                title="查看图片"
+                                            >
+                                                <ImageIcon size={18} />
+                                            </button>
+                                        )}
+                                        
                                         <button
-                                            onClick={() => {
-                                                const imageUrl = apiClient.getImageUrl(alarm.image_path);
-                                                setSelectedImage(imageUrl);
-                                            }}
-                                            className="p-2 bg-white hover:bg-blue-50 rounded-lg border border-gray-200 transition-colors flex-shrink-0"
-                                            title="查看图片"
+                                            onClick={() => handleDelete(alarm.id)}
+                                            className="p-2 bg-white hover:bg-gray-100 text-gray-600 rounded-lg border border-gray-200 transition-colors flex-shrink-0"
+                                            title="归档记录"
                                         >
-                                            <ImageIcon size={18} className="text-gray-600" />
+                                            <Archive size={18} />
                                         </button>
-                                    )}
+                                    </div>
                                 </div>
                             </div>
                         ))}

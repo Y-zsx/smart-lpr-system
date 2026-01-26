@@ -50,7 +50,7 @@ python main.py
 ```bash
 cd backend
 # 复制环境配置
-cp .env.example .env
+cp .env
 # 编辑 .env 文件，配置数据库连接信息
 
 npm install

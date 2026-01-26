@@ -215,8 +215,9 @@ export const getAlarms = async (): Promise<Alarm[]> => {
   const connection = await pool.getConnection();
   try {
     // 优先返回未读告警，然后按时间倒序
+    // 仅返回未软删除的告警
     const [rows] = await connection.execute<RowDataPacket[]>(
-      'SELECT * FROM `alarms` ORDER BY `is_read` ASC, `timestamp` DESC'
+      'SELECT * FROM `alarms` WHERE `is_deleted` = 0 ORDER BY `is_read` ASC, `timestamp` DESC'
     );
     
     return rows.map((row: RowDataPacket) => ({
@@ -233,12 +234,162 @@ export const getAlarms = async (): Promise<Alarm[]> => {
       reason: row.reason,
       severity: row.severity
     }));
+  } catch (error: any) {
+    // 如果 is_deleted 字段不存在，回退到旧查询
+    if (error.code === 'ER_BAD_FIELD_ERROR') {
+      console.warn('[DB] is_deleted field missing in alarms table, falling back to full query');
+      const [rows] = await connection.execute<RowDataPacket[]>(
+        'SELECT * FROM `alarms` ORDER BY `is_read` ASC, `timestamp` DESC'
+      );
+      return rows.map((row: RowDataPacket) => ({
+        id: row.id,
+        plate_id: row.plate_id || undefined,
+        blacklist_id: row.blacklist_id || undefined,
+        timestamp: parseInt(row.timestamp),
+        is_read: row.is_read,
+        plate_number: row.plate_number,
+        image_path: row.image_path || undefined,
+        location: row.location || undefined,
+        latitude: row.latitude ? parseFloat(row.latitude) : undefined,
+        longitude: row.longitude ? parseFloat(row.longitude) : undefined,
+        reason: row.reason,
+        severity: row.severity
+      }));
+    }
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+export const getBlacklistItem = async (id: number): Promise<BlacklistItem | null> => {
+  const connection = await pool.getConnection();
+  try {
+    const [rows] = await connection.execute<RowDataPacket[]>(
+      'SELECT * FROM `blacklist` WHERE `id` = ?',
+      [id]
+    );
+    
+    if (rows.length === 0) return null;
+
+    const row = rows[0];
+    return {
+      id: row.id,
+      plate_number: row.plate_number,
+      reason: row.reason,
+      severity: row.severity,
+      created_at: parseInt(row.created_at)
+    };
+  } finally {
+    connection.release();
+  }
+};
+
+export const deleteAlarmsByBlacklistId = async (blacklistId: number): Promise<number> => {
+  const connection = await pool.getConnection();
+  try {
+    // 软删除：更新 is_deleted = 1
+    try {
+      const [result] = await connection.execute<ResultSetHeader>(
+        'UPDATE `alarms` SET `is_deleted` = 1 WHERE `blacklist_id` = ?',
+        [blacklistId]
+      );
+      return result.affectedRows;
+    } catch (error: any) {
+      if (error.code === 'ER_BAD_FIELD_ERROR') {
+        // 如果字段不存在，执行物理删除
+        const [result] = await connection.execute<ResultSetHeader>(
+          'DELETE FROM `alarms` WHERE `blacklist_id` = ?',
+          [blacklistId]
+        );
+        return result.affectedRows;
+      }
+      throw error;
+    }
+  } finally {
+    connection.release();
+  }
+};
+
+export const deleteAlarmsByPlateNumber = async (plateNumber: string): Promise<number> => {
+  const connection = await pool.getConnection();
+  try {
+    // 软删除：更新 is_deleted = 1
+    try {
+      const [result] = await connection.execute<ResultSetHeader>(
+        'UPDATE `alarms` SET `is_deleted` = 1 WHERE `plate_number` = ?',
+        [plateNumber]
+      );
+      return result.affectedRows;
+    } catch (error: any) {
+      if (error.code === 'ER_BAD_FIELD_ERROR') {
+        // 如果字段不存在，执行物理删除
+        const [result] = await connection.execute<ResultSetHeader>(
+          'DELETE FROM `alarms` WHERE `plate_number` = ?',
+          [plateNumber]
+        );
+        return result.affectedRows;
+      }
+      throw error;
+    }
   } finally {
     connection.release();
   }
 };
 
 // ========== 兼容旧接口（用于平滑迁移） ==========
+
+export const updateAlarmStatus = async (id: number, isRead: boolean): Promise<boolean> => {
+  const connection = await pool.getConnection();
+  try {
+    console.log(`[DB] Updating alarm status: id=${id} (type: ${typeof id}), isRead=${isRead}`);
+    const [result] = await connection.execute<ResultSetHeader>(
+      'UPDATE `alarms` SET `is_read` = ? WHERE `id` = ?',
+      [isRead ? 1 : 0, id]
+    );
+    console.log(`[DB] Update result: affectedRows=${result.affectedRows}`);
+    return result.affectedRows > 0;
+  } catch (error) {
+    console.error(`[DB] Error updating alarm status:`, error);
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
+
+export const deleteAlarm = async (id: number): Promise<boolean> => {
+  const connection = await pool.getConnection();
+  try {
+    console.log(`[DB] Deleting alarm (soft delete): id=${id} (type: ${typeof id})`);
+    
+    // 尝试软删除
+    try {
+      const [result] = await connection.execute<ResultSetHeader>(
+        'UPDATE `alarms` SET `is_deleted` = 1 WHERE `id` = ?',
+        [id]
+      );
+      console.log(`[DB] Soft delete result: affectedRows=${result.affectedRows}`);
+      return result.affectedRows > 0;
+    } catch (error: any) {
+      // 如果 is_deleted 字段不存在，回退到物理删除
+      if (error.code === 'ER_BAD_FIELD_ERROR') {
+        console.warn(`[DB] is_deleted field missing, falling back to physical delete for id=${id}`);
+        const [result] = await connection.execute<ResultSetHeader>(
+          'DELETE FROM `alarms` WHERE `id` = ?',
+          [id]
+        );
+        console.log(`[DB] Physical delete result: affectedRows=${result.affectedRows}`);
+        return result.affectedRows > 0;
+      }
+      throw error;
+    }
+  } catch (error) {
+    console.error(`[DB] Error deleting alarm:`, error);
+    throw error;
+  } finally {
+    connection.release();
+  }
+};
 
 export const getDb = async (): Promise<Database> => {
   const [plates, blacklist, alarms] = await Promise.all([
@@ -249,6 +400,8 @@ export const getDb = async (): Promise<Database> => {
 
   return { plates, blacklist, alarms };
 };
+
+
 
 export const saveDb = async (db: Database): Promise<void> => {
   // 批量保存 plates
@@ -481,11 +634,12 @@ export const savePlateRecord = async (record: PlateRecord): Promise<PlateRecord>
         try {
           await connection.execute(
             `INSERT INTO \`alarms\` (
-              \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
+              \`plate_id\`, \`record_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
               \`plate_number\`, \`image_path\`, \`location\`, \`latitude\`, \`longitude\`, \`reason\`, \`severity\`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-              null, // plate_id 设置为 NULL，因为记录在 plate_records 表中，不在 plates 表中
+              null, // plate_id 设置为 NULL
+              record.id, // record_id 关联到 plate_records
               blacklistItem.id,
               alarmTimestamp,
               0,
@@ -501,7 +655,7 @@ export const savePlateRecord = async (record: PlateRecord): Promise<PlateRecord>
         } catch (error: any) {
           // 如果字段不存在，使用旧格式（向后兼容）
           if (error.code === 'ER_BAD_FIELD_ERROR') {
-            console.warn('告警表未包含经纬度字段，使用旧格式保存');
+            console.warn('告警表未包含新字段，使用旧格式保存');
             await connection.execute(
               `INSERT INTO \`alarms\` (
                 \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
@@ -581,11 +735,12 @@ export const createAlarmForBlacklist = async (record: PlateRecord, blacklistItem
     try {
       await connection.execute(
         `INSERT INTO \`alarms\` (
-          \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
+          \`plate_id\`, \`record_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
           \`plate_number\`, \`image_path\`, \`location\`, \`latitude\`, \`longitude\`, \`reason\`, \`severity\`
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          null, // plate_id 设置为 NULL，因为记录在 plate_records 表中，不在 plates 表中
+          null, // plate_id 设置为 NULL
+          record.id, // record_id 关联到 plate_records
           blacklistItem.id,
           record.timestamp,
           0,

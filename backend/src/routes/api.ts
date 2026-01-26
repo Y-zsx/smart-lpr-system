@@ -37,7 +37,17 @@ router.post('/blacklist', BlacklistController.addBlacklist);
 router.delete('/blacklist', BlacklistController.deleteBlacklist);
 
 // Alarms
+router.use('/alarms', (req, res, next) => {
+    console.log(`[API Router] Alarms route hit: ${req.method} ${req.url}`);
+    next();
+});
 router.get('/alarms', AlarmController.getAlarms);
+router.put('/alarms/:id/read', AlarmController.markAlarmAsRead);
+router.delete('/alarms/:id', (req, res, next) => {
+    console.log(`[API Router] DELETE /alarms/:id hit. ID: ${req.params.id}`);
+    next();
+}, AlarmController.deleteAlarm);
+router.delete('/alarms/plate/:plateNumber', AlarmController.deleteAlarmsByPlate);
 
 // Cameras
 router.get('/cameras', CameraController.getCameras);

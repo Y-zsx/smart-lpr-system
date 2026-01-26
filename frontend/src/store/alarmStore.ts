@@ -21,6 +21,9 @@ interface AlarmStore {
     alarms: Alarm[];
     fetchAlarms: () => Promise<void>;
     addAlarm: (alarm: Alarm) => void;
+    markAsRead: (id: number) => Promise<void>;
+    deleteAlarm: (id: number) => Promise<void>;
+    deleteAlarmsByPlate: (plateNumber: string) => Promise<void>;
 }
 
 export const useAlarmStore = create<AlarmStore>((set, get) => ({
@@ -52,5 +55,37 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
         return {
             alarms: [alarm, ...state.alarms]
         };
-    })
+    }),
+    markAsRead: async (id) => {
+        try {
+            await apiClient.markAlarmAsRead(id);
+            set((state) => ({
+                alarms: state.alarms.map(a => 
+                    a.id === id ? { ...a, is_read: 1 } : a
+                )
+            }));
+        } catch (error) {
+            console.error('Failed to mark alarm as read:', error);
+        }
+    },
+    deleteAlarm: async (id) => {
+        try {
+            await apiClient.deleteAlarm(id);
+            set((state) => ({
+                alarms: state.alarms.filter(a => a.id !== id)
+            }));
+        } catch (error) {
+            console.error('Failed to delete alarm:', error);
+        }
+    },
+    deleteAlarmsByPlate: async (plateNumber) => {
+        try {
+            await apiClient.deleteAlarmsByPlate(plateNumber);
+            set((state) => ({
+                alarms: state.alarms.filter(a => a.plate_number !== plateNumber)
+            }));
+        } catch (error) {
+            console.error('Failed to delete alarms by plate:', error);
+        }
+    }
 }));

@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getBlacklist as getBlacklistFromDb, addBlacklist as addBlacklistToDb, deleteBlacklist as deleteBlacklistFromDb, getAllPlateRecords, createAlarmForBlacklist, getPlates } from '../utils/db';
+import { getBlacklist as getBlacklistFromDb, addBlacklist as addBlacklistToDb, deleteBlacklist as deleteBlacklistFromDb, getAllPlateRecords, createAlarmForBlacklist, getPlates, deleteAlarmsByBlacklistId, getBlacklistItem, deleteAlarmsByPlateNumber } from '../utils/db';
 import { BlacklistItem, PlateRecord } from '../types';
 
 export const getBlacklist = async (req: Request, res: Response) => {
@@ -89,7 +89,20 @@ export const deleteBlacklist = async (req: Request, res: Response) => {
             return;
         }
 
-        const deleted = await deleteBlacklistFromDb(Number(id));
+        const blacklistId = Number(id);
+
+        // 获取黑名单详情，以便根据车牌号删除告警（兜底）
+        const item = await getBlacklistItem(blacklistId);
+        
+        // 先删除相关的告警记录（根据 blacklist_id）
+        await deleteAlarmsByBlacklistId(blacklistId);
+
+        // 如果获取到了车牌号，也根据车牌号删除告警（防止孤儿记录）
+        if (item) {
+            await deleteAlarmsByPlateNumber(item.plate_number);
+        }
+
+        const deleted = await deleteBlacklistFromDb(blacklistId);
         if (!deleted) {
             res.status(404).json({ message: 'Item not found' });
             return;

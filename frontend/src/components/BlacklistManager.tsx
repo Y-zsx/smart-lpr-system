@@ -3,6 +3,7 @@ import { apiClient } from '../api/client';
 import { X, Upload, Plus, Trash2, AlertOctagon } from 'lucide-react';
 import { useToastContext } from '../contexts/ToastContext';
 import { useConfirmContext } from '../contexts/ConfirmContext';
+import { useAlarmStore } from '../store/alarmStore';
 
 interface BlacklistItem {
     id: number;
@@ -33,6 +34,8 @@ export const BlacklistManager: React.FC<{ onClose: () => void }> = ({ onClose })
         await apiClient.addBlacklist(newItem);
         setNewItem({ plate_number: '', reason: '', severity: 'high' });
         fetchList();
+        // 刷新告警列表
+        useAlarmStore.getState().fetchAlarms();
     };
 
     const handleDelete = async (id: number) => {
@@ -45,6 +48,8 @@ export const BlacklistManager: React.FC<{ onClose: () => void }> = ({ onClose })
         await apiClient.deleteBlacklist(id);
         fetchList();
         toast.success('黑名单已删除');
+        // 立即刷新告警列表
+        useAlarmStore.getState().fetchAlarms();
     };
 
     const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -65,6 +70,8 @@ export const BlacklistManager: React.FC<{ onClose: () => void }> = ({ onClose })
                 await apiClient.addBlacklist(data);
                 fetchList();
                 toast.success(`成功导入 ${data.length} 条黑名单记录`);
+                // 刷新告警列表
+                useAlarmStore.getState().fetchAlarms();
             }
         };
         reader.readAsText(file);

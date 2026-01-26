@@ -199,6 +199,33 @@ export const apiClient = {
         return res.json();
     },
 
+    async markAlarmAsRead(id: number) {
+        const res = await fetch(`${BACKEND_URL}/api/alarms/${id}/read`, {
+            method: 'PUT',
+            headers: getHeaders()
+        });
+        if (!res.ok) throw new Error('Failed to mark alarm as read');
+        return res.json();
+    },
+
+    async deleteAlarm(id: number) {
+        const res = await fetch(`${BACKEND_URL}/api/alarms/${id}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+        });
+        if (!res.ok) throw new Error('Failed to delete alarm');
+        return res.json();
+    },
+
+    async deleteAlarmsByPlate(plateNumber: string) {
+        const res = await fetch(`${BACKEND_URL}/api/alarms/plate/${encodeURIComponent(plateNumber)}`, {
+            method: 'DELETE',
+            headers: getHeaders()
+        });
+        if (!res.ok) throw new Error('Failed to delete alarms');
+        return res.json();
+    },
+
     async getCameras() {
         const res = await fetch(`${BACKEND_URL}/api/cameras`, { headers: getHeaders() });
         if (!res.ok) throw new Error('Failed to fetch cameras');

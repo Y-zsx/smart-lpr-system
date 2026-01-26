@@ -89,9 +89,11 @@ export const initDatabase = async (): Promise<void> => {
       CREATE TABLE IF NOT EXISTS \`alarms\` (
         \`id\` INT AUTO_INCREMENT PRIMARY KEY,
         \`plate_id\` VARCHAR(36),
+        \`record_id\` VARCHAR(36),
         \`blacklist_id\` INT,
         \`timestamp\` BIGINT NOT NULL,
         \`is_read\` TINYINT(1) DEFAULT 0,
+        \`is_deleted\` TINYINT(1) DEFAULT 0,
         \`plate_number\` VARCHAR(20) NOT NULL,
         \`image_path\` VARCHAR(500),
         \`location\` VARCHAR(100),
@@ -99,11 +101,32 @@ export const initDatabase = async (): Promise<void> => {
         \`severity\` ENUM('high', 'medium', 'low') NOT NULL DEFAULT 'medium',
         INDEX \`idx_timestamp\` (\`timestamp\`),
         INDEX \`idx_is_read\` (\`is_read\`),
+        INDEX \`idx_is_deleted\` (\`is_deleted\`),
         INDEX \`idx_plate_number\` (\`plate_number\`),
         FOREIGN KEY (\`plate_id\`) REFERENCES \`plates\`(\`id\`) ON DELETE SET NULL,
+        FOREIGN KEY (\`record_id\`) REFERENCES \`plate_records\`(\`id\`) ON DELETE SET NULL,
         FOREIGN KEY (\`blacklist_id\`) REFERENCES \`blacklist\`(\`id\`) ON DELETE SET NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
+
+    // 尝试为已存在的 alarms 表添加字段
+    try {
+      await connection.execute(`ALTER TABLE \`alarms\` ADD COLUMN \`is_deleted\` TINYINT(1) DEFAULT 0 AFTER \`is_read\``);
+      await connection.execute(`CREATE INDEX \`idx_is_deleted\` ON \`alarms\` (\`is_deleted\`)`);
+    } catch (e: any) {
+      if (e.code !== 'ER_DUP_FIELDNAME') {
+        // console.log('is_deleted 字段已存在或添加失败:', e.message);
+      }
+    }
+
+    try {
+      await connection.execute(`ALTER TABLE \`alarms\` ADD COLUMN \`record_id\` VARCHAR(36) AFTER \`plate_id\``);
+      await connection.execute(`ALTER TABLE \`alarms\` ADD CONSTRAINT \`fk_alarms_record_id\` FOREIGN KEY (\`record_id\`) REFERENCES \`plate_records\`(\`id\`) ON DELETE SET NULL`);
+    } catch (e: any) {
+      if (e.code !== 'ER_DUP_FIELDNAME') {
+        // console.log('record_id 字段已存在或添加失败:', e.message);
+      }
+    }
 
     // 创建 plate_records 表（识别记录表）
     await connection.execute(`
