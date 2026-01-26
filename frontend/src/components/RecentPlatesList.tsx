@@ -141,7 +141,7 @@ export const RecentPlatesList: React.FC<RecentPlatesListProps> = React.memo(({ d
 
                     return (
                         <div
-                            key={group.plateNumber}
+                            key={`${group.plateNumber}-${index}`}
                             className="p-3 rounded-lg border border-gray-100 hover:border-blue-300 hover:bg-blue-50/30 transition-all"
                         >
                             <div className="flex items-start justify-between mb-2">
