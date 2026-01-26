@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Alarm } from '../store/alarmStore';
 import { useCameraStore } from '../store/cameraStore';
 import { apiClient } from '../api/client';
-import { X, MapPin, Clock, Play, Pause, RotateCcw } from 'lucide-react';
+import { X, MapPin, Clock, Play, Pause } from 'lucide-react';
 
 declare global {
     interface Window {
@@ -914,26 +914,6 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
         setIsPlaying(false);
     }, []);
 
-    const resetPath = useCallback(() => {
-        setIsPlaying(false);
-        setCurrentIndex(0);
-        if (mapInstanceRef.current && pathPoints.length > 0) {
-            // 过滤出有效的路径点
-            const validPoints = pathPoints.filter(p => 
-                !isNaN(p.lng) && !isNaN(p.lat) &&
-                p.lng >= -180 && p.lng <= 180 &&
-                p.lat >= -90 && p.lat <= 90
-            );
-
-            if (validPoints.length > 0) {
-                const bounds = new window.AMap.Bounds();
-                validPoints.forEach(point => {
-                    bounds.extend([point.lng, point.lat]);
-                });
-                mapInstanceRef.current.setBounds(bounds, false, [50, 50, 50, 50]);
-            }
-        }
-    }, [pathPoints]);
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -965,14 +945,6 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
                     >
                         {isPlaying ? <Pause size={18} /> : <Play size={18} />}
                         {isPlaying ? '暂停' : '播放'}
-                    </button>
-                    <button
-                        onClick={resetPath}
-                        disabled={pathPoints.length === 0}
-                        className="flex items-center gap-2 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        <RotateCcw size={18} />
-                        重置
                     </button>
                     {isPlaying && (
                         <div className="flex items-center gap-2 text-sm text-gray-600">
