@@ -48,7 +48,7 @@ export const LiveMonitorPage: React.FC = () => {
                         </button>
                     </div>
 
-                    <div className="flex-1 bg-black relative min-h-0">
+                    <div className={`flex-1 relative min-h-0 ${mode === 'upload' ? 'bg-gray-50' : 'bg-black'}`}>
                         {mode === 'camera' ? <CameraView /> : 
                          mode === 'multi' ? <MultiCameraView /> : 
                          <FileUpload />}
