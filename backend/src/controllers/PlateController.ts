@@ -167,41 +167,27 @@ export const recognizePlate = async (req: Request, res: Response) => {
                 return;
             }
 
-            const aiPlates = aiResponse.data.plates;
+            const aiPlates = aiResponse.data.plates || [];
             console.log('AI Service response:', {
-                platesCount: aiPlates?.length || 0,
+                platesCount: aiPlates.length,
                 plates: aiPlates
             });
 
-            if (aiPlates && aiPlates.length > 0) {
-                // Use the first detected plate
-                const bestPlate = aiPlates[0];
+            const plates: LicensePlate[] = aiPlates.map((p: { number: string; type: string; confidence: number; rect?: { x: number; y: number; w: number; h: number } }) => ({
+                id: uuidv4(),
+                number: p.number,
+                type: p.type as PlateType,
+                confidence: p.confidence,
+                timestamp: Date.now(),
+                rect: p.rect,
+                saved: false,
+                location: location || cameraName || '未知位置',
+                imageUrl: `uploads/temp/${file.filename}`,
+                cameraId: cameraId,
+                cameraName: cameraName || '未知摄像头'
+            }));
 
-                const plate: LicensePlate = {
-                    id: uuidv4(),
-                    number: bestPlate.number,
-                    type: bestPlate.type as PlateType,
-                    confidence: bestPlate.confidence,
-                    timestamp: Date.now(),
-                    rect: bestPlate.rect,
-                    saved: false, // Not saved to DB yet, just recognized
-                    location: location || cameraName || '未知位置',
-                    imageUrl: `uploads/temp/${file.filename}`,
-                    cameraId: cameraId,
-                    cameraName: cameraName || '未知摄像头'
-                };
-
-                res.json(plate);
-                return;
-            } else {
-                // No plates found by AI
-                console.warn('No license plates detected in image:', file.filename);
-                res.status(404).json({
-                    message: 'No license plate detected',
-                    suggestion: 'Please ensure the image contains a clear license plate'
-                });
-                return;
-            }
+            res.json({ plates });
 
         } catch (aiError) {
             console.error('AI Service Error:', aiError);

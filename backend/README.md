@@ -55,7 +55,7 @@ backend/
 
 - `GET /api/plates` - 获取识别记录（支持分组）
 - `POST /api/plates` - 保存识别记录
-- `POST /api/recognize` - 图片识别
+- `POST /api/recognize` - 图片识别（支持多车牌，返回 `{ plates: LicensePlate[] }`）
 - `GET /api/stats/dashboard` - 仪表盘统计
 - `GET /api/stats/daily` - 每日统计
 - `GET /api/blacklist` - 黑名单管理

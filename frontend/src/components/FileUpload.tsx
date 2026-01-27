@@ -11,7 +11,7 @@ interface FileItem {
     file: File;
     previewUrl: string;
     status: 'pending' | 'processing' | 'success' | 'error';
-    result?: LicensePlate;
+    results?: LicensePlate[];  // 多车牌
     error?: string;
 }
 
@@ -79,47 +79,34 @@ export const FileUpload: React.FC = () => {
             setFiles(prev => prev.map(f => f.id === item.id ? { ...f, status: 'processing' } : f));
 
             try {
-                // Use 'upload' source to skip deduplication and force save
-                const plate = await plateService.recognizeFromFile(item.file, 'upload');
+                const { plates } = await plateService.recognizeFromFile(item.file, 'upload');
 
-                // 识别成功，自动保存到数据库
-                if (plate && plate.number) {
+                if (!plates || plates.length === 0) {
+                    setFiles(prev => prev.map(f => f.id === item.id ? {
+                        ...f, status: 'error', error: '未识别到车牌'
+                    } : f));
+                    continue;
+                }
+
+                const toShow: LicensePlate[] = [];
+                for (const p of plates) {
                     try {
-                        // 保存到数据库
-                        const savedPlate = await apiClient.savePlate({
-                            ...plate,
-                            saved: true
-                        });
-                        
-                        addPlate(savedPlate);
-                        setFiles(prev => prev.map(f => f.id === item.id ? {
-                            ...f,
-                            status: 'success',
-                            result: savedPlate
-                        } : f));
+                        const saved = await apiClient.savePlate({ ...p, saved: true });
+                        addPlate(saved);
+                        toShow.push(saved);
                     } catch (saveError) {
                         console.error(`Failed to save plate for file ${item.file.name}:`, saveError);
-                        // 即使保存失败，识别也是成功的
-                        setFiles(prev => prev.map(f => f.id === item.id ? {
-                            ...f,
-                            status: 'success',
-                            result: plate
-                        } : f));
+                        addPlate(p);
+                        toShow.push(p);
                     }
-                } else {
-                    // 识别失败：没有识别到车牌
-                    setFiles(prev => prev.map(f => f.id === item.id ? {
-                        ...f,
-                        status: 'error',
-                        error: '未识别到车牌'
-                    } : f));
                 }
+                setFiles(prev => prev.map(f => f.id === item.id ? {
+                    ...f, status: 'success', results: toShow
+                } : f));
             } catch (error) {
                 console.error(`Failed to recognize file ${item.file.name}:`, error);
                 setFiles(prev => prev.map(f => f.id === item.id ? {
-                    ...f,
-                    status: 'error',
-                    error: '识别失败'
+                    ...f, status: 'error', error: '识别失败'
                 } : f));
             }
         }
@@ -201,15 +188,21 @@ export const FileUpload: React.FC = () => {
                                 </div>
 
                                 <div className="flex items-center gap-3">
-                                    {item.status === 'success' && item.result ? (
-                                        <div className="flex items-center gap-2">
-                                            <span className={`text-xs font-bold px-2 py-0.5 rounded ${item.result.type === 'green' ? 'bg-green-100 text-green-700' :
-                                                item.result.type === 'yellow' ? 'bg-yellow-100 text-yellow-700' :
-                                                    'bg-blue-100 text-blue-700'
-                                                }`}>
-                                                {item.result.number}
-                                            </span>
-                                            <CheckCircle size={18} className="text-green-500" />
+                                    {item.status === 'success' && item.results && item.results.length > 0 ? (
+                                        <div className="flex items-center gap-1.5 flex-wrap max-w-[200px] justify-end">
+                                            {item.results.map((r) => (
+                                                <span
+                                                    key={r.id}
+                                                    className={`text-xs font-bold px-2 py-0.5 rounded ${
+                                                        r.type === 'green' ? 'bg-green-100 text-green-700' :
+                                                        r.type === 'yellow' ? 'bg-yellow-100 text-yellow-700' :
+                                                        'bg-blue-100 text-blue-700'
+                                                    }`}
+                                                >
+                                                    {r.number}
+                                                </span>
+                                            ))}
+                                            <CheckCircle size={18} className="text-green-500 flex-shrink-0" />
                                         </div>
                                     ) : item.status === 'processing' ? (
                                         <Loader2 size={18} className="animate-spin text-blue-500" />

@@ -3,15 +3,19 @@ import { LicensePlate } from '../types/plate';
 
 const BACKEND_URL = apiClient.getBackendUrl();
 
+export interface RecognizeResult {
+    plates: LicensePlate[];
+}
+
 export const plateService = {
     /**
-     * 上传图片文件或 Blob 对象进行车牌识别
+     * 上传图片文件或 Blob 对象进行车牌识别（支持多车牌）
      * @param file 要识别的图片文件或 Blob 对象
      * @param source 图片来源 ('stream' | 'upload')
      * @param cameraId 摄像头ID（可选）
      * @param cameraName 摄像头名称（可选）
      * @param location 位置信息（可选）
-     * @returns 返回识别结果的 Promise
+     * @returns 返回 { plates: LicensePlate[] }
      */
     recognizeFromFile: async (
         file: Blob, 
@@ -19,7 +23,7 @@ export const plateService = {
         cameraId?: string,
         cameraName?: string,
         location?: string
-    ): Promise<LicensePlate> => {
+    ): Promise<RecognizeResult> => {
         // 根据环境变量判断是否使用模拟数据
         if (import.meta.env.VITE_USE_MOCK === 'true') {
             console.log('正在使用模拟识别服务 (VITE_USE_MOCK=true)');
@@ -48,7 +52,8 @@ export const plateService = {
                 throw new Error(`识别失败: ${res.statusText}`);
             }
 
-            return await res.json();
+            const data = await res.json();
+            return { plates: data.plates ?? [] };
         } catch (error) {
             console.error('识别服务出错:', error);
             throw error; // 将错误抛给 UI 层处理，而不是静默失败
@@ -56,12 +61,12 @@ export const plateService = {
     }
 };
 
-// 当后端不可用时使用的模拟函数（仅用于演示）
-const mockRecognize = (): Promise<LicensePlate> => {
+// 当后端不可用时使用的模拟函数（仅用于演示，支持多车牌）
+const mockRecognize = (): Promise<RecognizeResult> => {
     return new Promise((resolve) => {
         setTimeout(() => {
             const isGreen = Math.random() > 0.7;
-            resolve({
+            const plates: LicensePlate[] = [{
                 id: Math.random().toString(36).substr(2, 9),
                 number: generateMockPlate(isGreen),
                 type: isGreen ? 'green' : 'blue',
@@ -70,8 +75,9 @@ const mockRecognize = (): Promise<LicensePlate> => {
                 rect: { x: 100, y: 100, w: 200, h: 100 },
                 saved: true,
                 location: 'Camera 1',
-                imageUrl: '' // 在真实应用中，这里应该是上传后的图片 URL
-            });
+                imageUrl: ''
+            }];
+            resolve({ plates });
         }, 800 + Math.random() * 1000);
     });
 };

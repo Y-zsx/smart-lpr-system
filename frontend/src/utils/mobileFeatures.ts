@@ -27,6 +27,14 @@
 export const isInWebView = () => !!(window as any).inAppWebview;
 
 /**
+ * 粗略判断是否为移动端（手机/平板），用于在 PC 端隐藏触感等仅移动端有意义的配置
+ */
+export const isLikelyMobile = (): boolean => {
+    if (typeof navigator === 'undefined') return false;
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent || '');
+};
+
+/**
  * 从 WebView 调用 React Native 原生方法
  *
  * @param {string} type - 要调用的原生方法名称

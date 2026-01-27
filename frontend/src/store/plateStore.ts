@@ -9,6 +9,8 @@ interface PlateStore {
     settings: {
         confidenceThreshold: number; // 0-1
         scanInterval: number; // ms
+        plateCooldownSeconds: number; // 同车牌在此秒数内不重复保存，防同一车多次入库
+        retryOnEmpty: boolean; // 有运动但未识别到车牌时，短时重试一次，防漏检
         enableHaptics: boolean;
         isDemoMode: boolean;
     };
@@ -27,6 +29,8 @@ export const usePlateStore = create<PlateStore>((set, get) => ({
     settings: {
         confidenceThreshold: 0.7,
         scanInterval: 2000,
+        plateCooldownSeconds: 30,
+        retryOnEmpty: true,
         enableHaptics: true,
         isDemoMode: false,
     },

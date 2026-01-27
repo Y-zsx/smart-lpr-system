@@ -8,9 +8,7 @@ import { Rect, LicensePlate } from '../types/plate';
 import { hapticFeedback } from '../utils/mobileFeatures';
 
 interface RecentRecognition {
-    plate: LicensePlate;
-    isBlacklisted: boolean;
-    timestamp: number;
+    plates: LicensePlate[];
 }
 
 interface CameraViewProps {
@@ -51,6 +49,10 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     const scanIntervalRef = useRef<number | null>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const lastFrameDataRef = useRef<Uint8ClampedArray | null>(null);
+    // 同车牌防重复：key = cameraId:plateNumber, value = 最后一次保存时间
+    const recentlySeenPlatesRef = useRef<Map<string, number>>(new Map());
+    const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const retryScheduledRef = useRef<boolean>(false);
 
     // 加载黑名单
     useEffect(() => {
@@ -288,7 +290,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         return avgDiff > 5;
     };
 
-    const captureAndRecognize = async () => {
+    const captureAndRecognize = async (isRetry = false) => {
         if (!isScanning) return;
 
         let sourceElement: HTMLVideoElement | HTMLImageElement | null = null;
@@ -304,7 +306,6 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         // 对于视频元素，确保已加载并可以播放
         if ((isLocal || isFile) && sourceElement instanceof HTMLVideoElement) {
             if (sourceElement.readyState < 2) {
-                // 视频还没准备好，等待一下
                 return;
             }
         }
@@ -335,87 +336,91 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
             }
 
             canvas.toBlob(async (blob) => {
-                if (blob) {
-                    try {
-                        // 传递摄像头信息
-                        const plate = await plateService.recognizeFromFile(
-                            blob, 
-                            'stream',
-                            currentCamera?.id || '',
-                            currentCamera?.name || '未知摄像头',
-                            currentCamera?.location || currentCamera?.name || '未知位置'
-                        );
+                if (!blob) return;
+                try {
+                    const { plates } = await plateService.recognizeFromFile(
+                        blob, 'stream',
+                        currentCamera?.id || '',
+                        currentCamera?.name || '未知摄像头',
+                        currentCamera?.location || currentCamera?.name || '未知位置'
+                    );
 
-                        if (plate && plate.confidence >= settings.confidenceThreshold) {
-                            if (plate.rect) {
-                                setDetectedRect(plate.rect);
-                                setTimeout(() => setDetectedRect(null), 2000);
-                            }
+                    const valid = (plates || []).filter(
+                        p => p && p.confidence >= settings.confidenceThreshold
+                    );
 
-                            // 检查是否在黑名单中
-                            const isBlacklisted = blacklist.has(plate.number);
-                            
-                            // 显示识别结果
-                            setRecentRecognition({
-                                plate,
-                                isBlacklisted,
-                                timestamp: Date.now()
-                            });
-                            
-                            // 5秒后自动隐藏识别结果（黑名单车辆显示更久）
-                            setTimeout(() => {
-                                setRecentRecognition(null);
-                            }, isBlacklisted ? 10000 : 5000);
-
-                            // 自动保存识别记录到数据库
-                            console.log('识别成功，准备保存:', {
-                                plateNumber: plate.number,
-                                confidence: plate.confidence,
-                                saved: plate.saved,
-                                isBlacklisted,
-                                cameraId: currentCamera.id,
-                                cameraName: currentCamera.name
-                            });
-                            
-                            if (!plate.saved) {
-                                try {
-                                    const plateToSave = {
-                                        ...plate,
-                                        cameraId: currentCamera.id,
-                                        cameraName: currentCamera.name,
-                                        location: currentCamera.location || currentCamera.name,
-                                        saved: true
-                                    };
-                                    console.log('保存识别记录到数据库:', plateToSave);
-                                    
-                                    const savedPlate = await apiClient.savePlate(plateToSave);
-                                    console.log('保存成功:', savedPlate);
-                                    
-                                    addPlate(savedPlate);
-                                    if (settings.enableHaptics) {
-                                        // 黑名单车辆使用更强的震动反馈
-                                        hapticFeedback(isBlacklisted ? 'heavy' : 'medium');
-                                    }
-                                } catch (saveError) {
-                                    console.error('保存识别记录失败:', saveError);
-                                    console.error('错误详情:', {
-                                        error: saveError,
-                                        plate: plate
-                                    });
-                                    // 即使保存失败，也显示识别结果
-                                    addPlate(plate);
-                                }
-                            } else {
-                                console.log('识别记录已保存，直接添加到列表');
-                                addPlate(plate);
-                                if (settings.enableHaptics) {
-                                    hapticFeedback(isBlacklisted ? 'heavy' : 'medium');
-                                }
-                            }
+                    // 有运动但未识别到车牌：短时补拍一次，减轻漏检
+                    if (valid.length === 0) {
+                        if (settings.retryOnEmpty !== false && !isRetry && !retryScheduledRef.current) {
+                            retryScheduledRef.current = true;
+                            retryTimeoutRef.current = setTimeout(() => {
+                                retryTimeoutRef.current = null;
+                                retryScheduledRef.current = false;
+                                captureAndRecognize(true);
+                            }, 250);
                         }
-                    } catch (e) {
-                        // 忽略错误
+                        return;
                     }
+
+                    if (valid[0].rect) {
+                        setDetectedRect(valid[0].rect);
+                        setTimeout(() => setDetectedRect(null), 2000);
+                    }
+
+                    const isAnyBlacklisted = valid.some(p => blacklist.has(p.number));
+                    setRecentRecognition({ plates: valid });
+                    setTimeout(() => setRecentRecognition(null), isAnyBlacklisted ? 10000 : 5000);
+
+                    const cooldownMs = (settings.plateCooldownSeconds ?? 30) * 1000;
+                    const camKey = effectiveCameraId || 'default';
+                    const map = recentlySeenPlatesRef.current;
+                    let didSaveAny = false;
+
+                    for (const plate of valid) {
+                        const key = `${camKey}:${plate.number}`;
+                        const last = map.get(key);
+                        const now = Date.now();
+                        if (last != null && now - last < cooldownMs) {
+                            continue; // 防重复：冷却期内不重复保存
+                        }
+
+                        if (!plate.saved) {
+                            try {
+                                const plateToSave = {
+                                    ...plate,
+                                    cameraId: currentCamera?.id,
+                                    cameraName: currentCamera?.name,
+                                    location: currentCamera?.location || currentCamera?.name,
+                                    saved: true
+                                };
+                                const savedPlate = await apiClient.savePlate(plateToSave);
+                                addPlate(savedPlate);
+                                didSaveAny = true;
+                                map.set(key, Date.now());
+                            } catch (saveError) {
+                                console.error('保存识别记录失败:', saveError, plate);
+                                addPlate(plate);
+                                didSaveAny = true;
+                                map.set(key, Date.now());
+                            }
+                        } else {
+                            addPlate(plate);
+                            didSaveAny = true;
+                            map.set(key, Date.now());
+                        }
+                    }
+
+                    // 限制 Map 大小，定期清理过期
+                    if (map.size > 150) {
+                        const cutoff = Date.now() - cooldownMs * 2;
+                        for (const [k, v] of map.entries()) { if (v < cutoff) map.delete(k); }
+                    }
+
+                    if (settings.enableHaptics && (didSaveAny || isAnyBlacklisted)) {
+                        hapticFeedback(isAnyBlacklisted ? 'heavy' : 'medium');
+                    }
+                } catch (e) {
+                    // 忽略
                 }
             }, 'image/jpeg', 0.8);
         } catch (e) {
@@ -429,6 +434,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
             if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
             if (mjpegRefreshIntervalRef.current) clearInterval(mjpegRefreshIntervalRef.current);
             if (healthCheckIntervalRef.current) clearInterval(healthCheckIntervalRef.current);
+            if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
         };
     }, [effectiveCameraId, currentCamera?.id]);
 
@@ -773,26 +779,34 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                             </div>
                         )}
 
-                        {detectedRect && recentRecognition && (
-                            <div
-                                className={`absolute border-2 rounded transition-all duration-300 ${
-                                    recentRecognition.isBlacklisted 
-                                        ? 'border-red-500 bg-red-500/30 animate-pulse' 
-                                        : 'border-green-500 bg-green-500/20'
-                                }`}
-                                style={{
-                                    left: `${detectedRect.x * scale + offsetX}px`,
-                                    top: `${detectedRect.y * scale + offsetY}px`,
-                                    width: `${detectedRect.w * scale}px`,
-                                    height: `${detectedRect.h * scale}px`,
-                                }}
-                            >
-                                <div className={`absolute -top-7 left-0 text-white text-xs px-2 py-0.5 rounded font-bold ${
-                                    recentRecognition.isBlacklisted ? 'bg-red-600' : 'bg-green-500'
-                                }`}>
-                                    {recentRecognition.plate.number}
-                                </div>
-                            </div>
+                        {detectedRect && recentRecognition && recentRecognition.plates[0] && (
+                            (() => {
+                                const isAnyBlacklisted = recentRecognition.plates.some(p => blacklist.has(p.number));
+                                return (
+                                    <div
+                                        className={`absolute border-2 rounded transition-all duration-300 ${
+                                            isAnyBlacklisted 
+                                                ? 'border-red-500 bg-red-500/30 animate-pulse' 
+                                                : 'border-green-500 bg-green-500/20'
+                                        }`}
+                                        style={{
+                                            left: `${detectedRect.x * scale + offsetX}px`,
+                                            top: `${detectedRect.y * scale + offsetY}px`,
+                                            width: `${detectedRect.w * scale}px`,
+                                            height: `${detectedRect.h * scale}px`,
+                                        }}
+                                    >
+                                        <div className={`absolute -top-7 left-0 text-white text-xs px-2 py-0.5 rounded font-bold ${
+                                            isAnyBlacklisted ? 'bg-red-600' : 'bg-green-500'
+                                        }`}>
+                                            {recentRecognition.plates[0].number}
+                                            {recentRecognition.plates.length > 1 && (
+                                                <span className="ml-1 opacity-90">+{recentRecognition.plates.length - 1}</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                );
+                            })()
                         )}
 
                         <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-2 z-20">
@@ -804,78 +818,74 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                     </div>
                 )}
 
-                {/* 识别结果卡片 */}
-                {recentRecognition && (
-                    <div className={`absolute bottom-24 left-1/2 transform -translate-x-1/2 z-30 pointer-events-auto animate-in slide-in-from-bottom-5 duration-300 ${
-                        recentRecognition.isBlacklisted ? 'w-full max-w-md' : 'w-full max-w-sm'
-                    }`}>
-                        <div className={`rounded-xl shadow-2xl border-2 overflow-hidden ${
-                            recentRecognition.isBlacklisted
-                                ? 'bg-red-50 border-red-500'
-                                : 'bg-white border-blue-200'
-                        }`}>
-                            {recentRecognition.isBlacklisted && (
-                                <div className="bg-red-600 text-white px-4 py-2 flex items-center gap-2">
-                                    <ShieldAlert size={18} className="animate-pulse" />
-                                    <span className="font-bold">⚠️ 黑名单车辆告警</span>
-                                </div>
-                            )}
-                            <div className="p-4">
-                                <div className="flex items-center justify-between mb-3">
-                                    <div className="flex items-center gap-3">
-                                        <span className={`text-2xl font-bold font-mono px-3 py-1.5 rounded border ${
-                                            recentRecognition.plate.type === 'blue' ? 'bg-blue-600 text-white border-blue-600' :
-                                            recentRecognition.plate.type === 'green' ? 'bg-green-50 text-green-600 border-green-200' :
-                                            recentRecognition.plate.type === 'yellow' ? 'bg-yellow-500 text-white border-yellow-500' :
-                                            'bg-gray-100 text-gray-700 border-gray-200'
-                                        }`}>
-                                            {recentRecognition.plate.number}
-                                        </span>
-                                        {recentRecognition.isBlacklisted && (
-                                            <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded-full border border-red-300 font-medium">
-                                                黑名单
-                                            </span>
+                {/* 识别结果卡片（支持多车牌） */}
+                {recentRecognition && recentRecognition.plates.length > 0 && (
+                    (() => {
+                        const { plates } = recentRecognition;
+                        const isAnyBlacklisted = plates.some(p => blacklist.has(p.number));
+                        return (
+                            <div className={`absolute bottom-24 left-1/2 transform -translate-x-1/2 z-30 pointer-events-auto animate-in slide-in-from-bottom-5 duration-300 ${
+                                isAnyBlacklisted ? 'w-full max-w-md' : 'w-full max-w-sm'
+                            }`}>
+                                <div className={`rounded-xl shadow-2xl border-2 overflow-hidden ${
+                                    isAnyBlacklisted ? 'bg-red-50 border-red-500' : 'bg-white border-blue-200'
+                                }`}>
+                                    {isAnyBlacklisted && (
+                                        <div className="bg-red-600 text-white px-4 py-2 flex items-center gap-2">
+                                            <ShieldAlert size={18} className="animate-pulse" />
+                                            <span className="font-bold">⚠️ 黑名单车辆告警</span>
+                                        </div>
+                                    )}
+                                    <div className="p-4">
+                                        <div className="flex items-center justify-between mb-3">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                {plates.map((p) => (
+                                                    <span
+                                                        key={p.id}
+                                                        className={`text-xl font-bold font-mono px-2.5 py-1 rounded border flex items-center gap-1 ${
+                                                            p.type === 'blue' ? 'bg-blue-600 text-white border-blue-600' :
+                                                            p.type === 'green' ? 'bg-green-50 text-green-600 border-green-200' :
+                                                            p.type === 'yellow' ? 'bg-yellow-500 text-white border-yellow-500' :
+                                                            'bg-gray-100 text-gray-700 border-gray-200'
+                                                        }`}
+                                                    >
+                                                        {p.number}
+                                                        {blacklist.has(p.number) && (
+                                                            <span className="text-xs bg-red-100 text-red-700 px-1.5 py-0.5 rounded">黑名单</span>
+                                                        )}
+                                                    </span>
+                                                ))}
+                                            </div>
+                                            <button
+                                                onClick={() => setRecentRecognition(null)}
+                                                className="text-gray-400 hover:text-gray-600 transition-colors"
+                                            >
+                                                <X size={18} />
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                            <div className="bg-gray-50 rounded-lg p-2">
+                                                <div className="text-xs text-gray-500 mb-1">识别数量</div>
+                                                <div className="font-semibold text-gray-800">{plates.length} 个车牌</div>
+                                            </div>
+                                            <div className="bg-gray-50 rounded-lg p-2">
+                                                <div className="text-xs text-gray-500 mb-1">平均置信度</div>
+                                                <div className="font-semibold text-gray-800">
+                                                    {((plates.reduce((a, p) => a + p.confidence, 0) / plates.length) * 100).toFixed(1)}%
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {plates[0].location && (
+                                            <div className="mt-3 text-xs text-gray-500">位置: {plates[0].location}</div>
                                         )}
-                                    </div>
-                                    <button
-                                        onClick={() => setRecentRecognition(null)}
-                                        className="text-gray-400 hover:text-gray-600 transition-colors"
-                                    >
-                                        <X size={18} />
-                                    </button>
-                                </div>
-                                
-                                <div className="grid grid-cols-2 gap-3 text-sm">
-                                    <div className="bg-gray-50 rounded-lg p-2">
-                                        <div className="text-xs text-gray-500 mb-1">置信度</div>
-                                        <div className="font-semibold text-gray-800">
-                                            {(recentRecognition.plate.confidence * 100).toFixed(1)}%
+                                        <div className="mt-3 text-xs text-gray-400">
+                                            {new Date(plates[0].timestamp).toLocaleString('zh-CN')}
                                         </div>
                                     </div>
-                                    <div className="bg-gray-50 rounded-lg p-2">
-                                        <div className="text-xs text-gray-500 mb-1">车牌类型</div>
-                                        <div className="font-semibold text-gray-800">
-                                            {recentRecognition.plate.type === 'blue' ? '蓝牌' :
-                                             recentRecognition.plate.type === 'green' ? '绿牌' :
-                                             recentRecognition.plate.type === 'yellow' ? '黄牌' :
-                                             recentRecognition.plate.type === 'white' ? '白牌' :
-                                             recentRecognition.plate.type === 'black' ? '黑牌' : '未知'}
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                {recentRecognition.plate.location && (
-                                    <div className="mt-3 text-xs text-gray-500">
-                                        位置: {recentRecognition.plate.location}
-                                    </div>
-                                )}
-                                
-                                <div className="mt-3 text-xs text-gray-400">
-                                    {new Date(recentRecognition.timestamp).toLocaleString('zh-CN')}
                                 </div>
                             </div>
-                        </div>
-                    </div>
+                        );
+                    })()
                 )}
             </div>
 
