@@ -1,82 +1,24 @@
-# 📚 文档索引
+# 文档索引
 
-智能车牌识别系统的完整文档集合。
+## 快速入门
 
-## 🚀 快速入门
+- [快速开始](QUICK_START.md) — 视频演示与摄像头接入
 
-### [快速开始指南](QUICK_START.md)
-3分钟快速上手，包含视频文件演示和真实摄像头接入。
+## 配置与部署
 
-## ⚙️ 配置指南
+- [云服务器部署](DEPLOYMENT.md) — 从零部署（环境、数据库、Nginx、SSL、PM2、防火墙）
+- [摄像头配置](CAMERA_SETUP.md) — USB/网络摄像头、视频文件、性能与故障排查
+- [数据库配置](DATABASE.md) — MySQL 安装、表结构、脚本使用
+- [权限管理](IAM_RBAC.md) — RBAC、数据范围、默认账号与验收
+- [项目结构](PROJECT_STRUCTURE.md) — 稳妥版目录与迁移建议
+- [高德地图配置](AMAP_SETUP.md) — 地理位置与地图 API
 
-### [云服务器部署指南](DEPLOYMENT.md) ⭐
-**保姆级教程**：从零开始部署到云服务器
-- 服务器环境配置
-- 数据库配置
-- 前后端部署
-- Nginx 反向代理
-- SSL 证书配置
-- 进程管理（PM2）
-- 防火墙配置
-- 常见问题解决
+## 数据与开发
 
-### [摄像头配置指南](CAMERA_SETUP.md)
-详细的摄像头接入方案：
-- USB 摄像头配置
-- 网络摄像头（IP Camera）配置
-- 视频文件输入配置
-- 性能优化和故障排查
+- [数据记录说明](PLATE_RECORDS.md) — 车牌记录模型、表结构、API、维护
 
-### [数据库配置指南](DATABASE.md)
-MySQL 数据库完整配置：
-- 数据库安装和配置
-- 表结构说明
-- 数据库脚本使用方法
-- 常见问题解决
+## 推荐阅读
 
-### [权限管理指南](IAM_RBAC.md)
-RBAC 人员权限管理：
-- 用户-角色-权限配置
-- 数据范围（摄像头/区域）控制
-- 管理员与只读用户差异演示
-
-### [项目结构优化说明](PROJECT_STRUCTURE.md)
-说明“稳妥版”目录优化方式与后续迁移建议。
-
-### [高德地图配置指南](AMAP_SETUP.md)
-高德地图 API 配置，实现真实地理位置选择功能。
-
-## 📊 数据说明
-
-### [数据记录说明](PLATE_RECORDS.md)
-车牌识别记录的数据结构和使用方法：
-- 数据模型说明
-- 数据库结构
-- API 接口使用
-- 数据查询和维护
-
-## 📖 推荐阅读顺序
-
-### 新用户
-1. [快速开始指南](QUICK_START.md) - 快速上手（本地开发）
-2. [摄像头配置指南](CAMERA_SETUP.md) - 配置摄像头
-3. [数据库配置指南](DATABASE.md) - 配置数据库
-
-### 部署到服务器
-1. [云服务器部署指南](DEPLOYMENT.md) - 完整部署教程
-
-### 开发者
-1. [数据记录说明](PLATE_RECORDS.md) - 了解数据结构
-2. [高德地图配置指南](AMAP_SETUP.md) - 配置地图功能
-3. 查看各模块 README：
-   - [前端文档](../frontend/README.md)
-   - [后端文档](../backend/README.md)
-   - [AI服务文档](../ai-service/README.md)
-
-## 🔗 相关资源
-
-- **主项目说明**: [../README.md](../README.md)
-- **数据库脚本**: [../scripts/README.md](../scripts/README.md)
-- **前端应用**: [../frontend/README.md](../frontend/README.md)
-- **后端服务**: [../backend/README.md](../backend/README.md)
-- **AI服务**: [../ai-service/README.md](../ai-service/README.md)
+- 新用户：快速开始 → 摄像头配置 → 数据库配置
+- 部署：云服务器部署
+- 开发：数据记录说明、高德地图配置、各模块 README（frontend/backend/ai-service）

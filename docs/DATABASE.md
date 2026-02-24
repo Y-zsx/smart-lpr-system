@@ -1,66 +1,17 @@
-# 数据库设置指南
+# 数据库配置
 
-## MySQL 数据库配置
-
-本项目使用 MySQL 作为数据存储，支持自动创建数据库和表结构。
+MySQL 存储，支持启动时自动建库建表。
 
 ## 快速开始
 
-### 1. 安装 MySQL
+1. **安装与启动**：Windows 用 [MySQL Installer](https://dev.mysql.com/downloads/installer/)；macOS `brew install mysql` 且 `brew services start mysql`；Linux `apt-get install mysql-server` 或 `yum install mysql-server`，`systemctl start mysql`。
+2. **连接配置**：`backend` 下 `cp .env.example .env`，编辑：
+   - PORT=8000；DB_HOST、DB_PORT、DB_USER、DB_PASSWORD、DB_NAME=smart_lpr
+3. **自动初始化**：`cd backend && npm install && npm run dev`，将自动创建数据库与表。
 
-如果还没有安装 MySQL，请先安装：
+## 表结构
 
-- **Windows**: 下载 MySQL Installer from https://dev.mysql.com/downloads/installer/
-- **macOS**: `brew install mysql` 或下载 DMG 安装包
-- **Linux**: `sudo apt-get install mysql-server` (Ubuntu/Debian) 或 `sudo yum install mysql-server` (CentOS/RHEL)
-
-### 2. 启动 MySQL 服务
-
-- **Windows**: 在服务管理器中启动 MySQL 服务，或使用 MySQL Workbench
-- **macOS**: `brew services start mysql`
-- **Linux**: `sudo systemctl start mysql`
-
-### 3. 配置数据库连接
-
-在 `backend` 目录下创建 `.env` 文件（如果不存在）：
-
-```bash
-cd backend
-cp .env.example .env
-```
-
-编辑 `.env` 文件，设置数据库连接信息：
-
-```env
-# 服务器配置
-PORT=8000
-
-# MySQL 数据库配置
-DB_HOST=localhost
-DB_PORT=3306
-DB_USER=root
-DB_PASSWORD=your_password_here
-DB_NAME=smart_lpr
-```
-
-### 4. 自动初始化
-
-启动后端服务时，系统会自动：
-
-1. 创建数据库（如果不存在）
-2. 创建所有必需的表结构
-3. 测试数据库连接
-
-```bash
-npm install
-npm run dev
-```
-
-## 数据库结构
-
-### plates 表（车牌记录）
-
-存储所有识别到的车牌信息。
+### plates（车牌记录）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -74,9 +25,7 @@ npm run dev
 | rect_x, rect_y, rect_w, rect_h | INT | 车牌在图片中的位置 |
 | saved | TINYINT(1) | 是否已保存 |
 
-### blacklist 表（黑名单）
-
-存储黑名单车辆信息。
+### blacklist（黑名单）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -86,9 +35,7 @@ npm run dev
 | severity | ENUM | 严重程度：high, medium, low |
 | created_at | BIGINT | 创建时间戳 |
 
-### alarms 表（告警记录）
-
-存储黑名单车辆识别告警。
+### alarms（告警记录）
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
@@ -168,16 +115,8 @@ CREATE TABLE IF NOT EXISTS `alarms` (
 
 ## 故障排除
 
-### 连接失败
-
-1. 检查 MySQL 服务是否运行
-2. 检查 `.env` 文件中的数据库配置是否正确
-3. 检查 MySQL 用户权限
-4. 检查防火墙设置
-
-### 权限错误
-
-如果遇到权限错误，可能需要创建专用数据库用户：
+- **连接失败**：确认 MySQL 已启动、`.env` 配置正确、用户权限与防火墙。
+- **权限错误**：可创建专用用户：
 
 ```sql
 CREATE USER 'smart_lpr_user'@'localhost' IDENTIFIED BY 'your_password';
@@ -192,13 +131,9 @@ DB_USER=smart_lpr_user
 DB_PASSWORD=your_password
 ```
 
-## 数据库脚本
+## 脚本（scripts/）
 
-项目提供了多个数据库脚本，位于 `scripts/` 目录。详细使用方法如下：
-
-### 初始化脚本
-
-**`init_database.sql`** - 数据库初始化脚本（首次安装必执行）
+### init_database.sql（首次必执行）
 
 ```bash
 mysql -u root -p < scripts/init_database.sql
@@ -207,38 +142,25 @@ mysql -u root -p
 source scripts/init_database.sql;
 ```
 
-功能：
-- 创建 `smart_lpr` 数据库
-- 创建所有必需的表结构（plates, blacklist, alarms, plate_records等）
-- 包含经纬度字段和索引配置
+创建库与表（含 plate_records、经纬度等）。
 
-### 迁移脚本
-
-**`migrate_to_plate_records.sql`** - 数据迁移脚本（升级系统时执行）
+### migrate_to_plate_records.sql（升级时执行）
 
 ```bash
 mysql -u root -p < scripts/migrate_to_plate_records.sql
 ```
 
-功能：
-- 创建 `plate_records` 表（新的记录结构）
-- 迁移现有数据到新表
-- 保留原有表结构用于兼容性
+创建 plate_records 并迁移数据，保留原表兼容。
 
-### 维护脚本
-
-**`verify_database.sql`** - 数据库验证脚本
+### verify_database.sql
 
 ```bash
 mysql -u root -p < scripts/verify_database.sql
 ```
 
-功能：
-- 检查数据库和表是否存在
-- 验证表结构完整性（包括经纬度字段）
-- 查看数据库统计信息
+检查库表存在与结构、统计信息。
 
-**`clear_all_data.sql`** - 清空所有数据脚本（⚠️ 测试环境使用）
+### clear_all_data.sql（仅测试环境）
 
 ```bash
 mysql -u root -p
@@ -246,9 +168,9 @@ USE smart_lpr;
 source scripts/clear_all_data.sql;
 ```
 
-⚠️ **警告**：会删除所有表的数据，执行前请先备份数据库。
+会清空所有表数据，执行前务必备份。
 
-**`update_historical_alarms_coordinates.sql`** - 更新历史告警坐标（可选）
+### update_historical_alarms_coordinates.sql（可选）
 
 ```bash
 mysql -u root -p
@@ -256,20 +178,6 @@ USE smart_lpr;
 source scripts/update_historical_alarms_coordinates.sql;
 ```
 
-功能：
-- 为历史告警记录补充经纬度坐标
-- 从 `plate_records` 和 `cameras` 表关联获取坐标
+为历史告警补经纬度（从 plate_records、cameras 关联）；需 cameras 有数据（前端添加摄像头即会写入）。
 
-**注意**：需要先确保 `cameras` 表存在且有数据（在前端添加摄像头并保存会自动创建）。
-
-### 脚本执行顺序
-
-1. **首次安装**：执行 `init_database.sql`
-2. **升级系统**：先备份，再执行 `migrate_to_plate_records.sql`
-3. **验证配置**：随时可以执行 `verify_database.sql`
-4. **更新历史数据**：执行 `update_historical_alarms_coordinates.sql`（可选）
-
-### 注意事项
-
-- **备份数据**：执行任何脚本前，建议先备份现有数据
-- **权限要求**：确保MySQL用户有创建数据库和表的权限
+**顺序**：首次 `init_database.sql` → 升级前备份再 `migrate_to_plate_records.sql` → 随时 `verify_database.sql` → 可选 `update_historical_alarms_coordinates.sql`。执行前备份，并确保 MySQL 用户有建库建表权限。

@@ -1,21 +1,20 @@
 # Smart LPR System
 
-> 智能车牌识别系统 - 基于 AI 的全栈车牌识别解决方案
+智能车牌识别系统 - 基于 AI 的全栈车牌识别解决方案。
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.8-blue.svg)](https://www.python.org/)
 
-## ✨ 功能特性
+## 功能特性
 
-- 🚗 **高精度识别** - 基于 HyperLPR3 深度学习算法，支持多种车牌类型
-- 📹 **多源输入** - 支持 USB 摄像头、网络摄像头、视频文件
-- 📊 **实时监控** - 实时展示识别结果和统计数据
-- 📈 **数据分析** - 流量统计、趋势分析、区域分布热力图
-- 🚫 **黑名单管理** - 自动告警和车辆轨迹追踪
-- 📱 **响应式设计** - 完美适配桌面端和移动端
+- 高精度识别：HyperLPR3，支持多种车牌类型
+- 多源输入：USB/网络摄像头、视频文件
+- 实时监控与数据分析：流量统计、趋势、热力图
+- 黑名单管理：自动告警与轨迹追踪
+- 响应式设计：桌面端与移动端
 
-## 🚀 快速开始
+## 快速开始
 
 ### 环境要求
 
@@ -49,9 +48,8 @@ python main.py
 
 ```bash
 cd backend
-# 复制环境配置
-cp .env
-# 编辑 .env 文件，配置数据库连接信息
+cp .env.example .env
+# 编辑 .env 配置数据库连接
 
 npm install
 npm run dev
@@ -66,7 +64,7 @@ DB_PASSWORD=your_password
 DB_NAME=smart_lpr
 ```
 
-> 💡 后端启动时会自动创建数据库和表结构
+后端启动时会自动创建数据库和表。
 
 #### 3. 启动前端
 
@@ -78,7 +76,7 @@ npm run dev
 
 访问 `http://localhost:5173` 查看应用。
 
-## 📁 项目结构
+## 项目结构
 
 ```
 smart-lpr-system/
@@ -121,9 +119,9 @@ smart-lpr-system/
 └── start-dev.ps1         # Windows 启动脚本
 ```
 
-> 说明：当前为“稳妥版结构优化”，以兼容现有运行逻辑为优先。旧目录继续可用，新代码建议优先进入 `backend/src/modules` 与 `frontend/src/features`。
+新代码建议放在 `backend/src/modules` 与 `frontend/src/features`，详见 [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md)。
 
-## 🛠️ 技术栈
+## 技术栈
 
 | 模块 | 技术 |
 |------|------|
@@ -131,16 +129,17 @@ smart-lpr-system/
 | **后端** | Node.js, Express, TypeScript, MySQL |
 | **AI服务** | Python, FastAPI, HyperLPR3, OpenCV |
 
-## 📚 文档
+## 文档
 
-- 🚀 [云服务器部署指南](docs/DEPLOYMENT.md) - **保姆级部署教程** ⭐
-- 📖 [快速开始指南](docs/QUICK_START.md) - 3分钟快速上手
-- 📹 [摄像头配置指南](docs/CAMERA_SETUP.md) - 摄像头接入方案
-- 🗄️ [数据库配置指南](docs/DATABASE.md) - MySQL 配置说明
-- 📊 [数据记录说明](docs/PLATE_RECORDS.md) - 数据结构说明
-- 🗺️ [高德地图配置](docs/AMAP_SETUP.md) - 地理位置功能
+- [云服务器部署](docs/DEPLOYMENT.md)
+- [快速开始](docs/QUICK_START.md)
+- [摄像头配置](docs/CAMERA_SETUP.md)
+- [数据库配置](docs/DATABASE.md)
+- [数据记录说明](docs/PLATE_RECORDS.md)
+- [高德地图配置](docs/AMAP_SETUP.md)
+- [文档索引](docs/README.md)
 
-## 🔧 开发
+## 开发
 
 ### 端口说明
 
@@ -158,16 +157,8 @@ mysql -u root -p < scripts/init_database.sql
 mysql -u root -p < scripts/verify_database.sql
 ```
 
-更多脚本说明请查看 [scripts/README.md](scripts/README.md)
+更多脚本说明见 [scripts/README.md](scripts/README.md)。
 
-## 📝 许可证
+## 许可证与贡献
 
-MIT License
-
-## 🤝 贡献
-
-欢迎提交 Issue 和 Pull Request！
-
----
-
-**需要帮助？** 查看 [文档索引](docs/README.md) 获取更多信息。
+MIT License。欢迎提交 Issue 与 Pull Request。
