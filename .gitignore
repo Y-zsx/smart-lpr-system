@@ -12,3 +12,6 @@ backend/uploads/
 *.db
 *.sqlite
 *.sqlite3
+
+# PRD2Code / Fusion 等工具生成的工作目录（勿提交）
+.prd2code/
