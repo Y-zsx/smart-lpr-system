@@ -83,7 +83,7 @@ smart-lpr-system/
 ├── frontend/              # 前端应用 (React + TypeScript)
 │   ├── src/
 │   │   ├── api/          # API 接口封装
-│   │   ├── features/     # 业务域脚手架（稳妥版）
+│   │   ├── features/     # 业务域脚手架
 │   │   ├── components/   # UI 组件
 │   │   ├── pages/        # 页面路由
 │   │   ├── store/        # 状态管理
@@ -92,7 +92,7 @@ smart-lpr-system/
 │
 ├── backend/              # 后端服务 (Node.js + Express)
 │   ├── src/
-│   │   ├── modules/      # 业务模块脚手架（稳妥版）
+│   │   ├── modules/      # 业务模块脚手架
 │   │   ├── controllers/  # 业务控制器
 │   │   ├── routes/       # API 路由
 │   │   ├── services/     # 领域服务
