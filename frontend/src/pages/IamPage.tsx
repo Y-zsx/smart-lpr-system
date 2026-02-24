@@ -26,25 +26,47 @@ interface IamPermission {
     group: string;
 }
 
+interface CameraOption {
+    id: string;
+    name: string;
+    regionCode?: string;
+}
+
 export const IamPage: React.FC = () => {
     const toast = useToastContext();
     const [users, setUsers] = useState<IamUser[]>([]);
     const [roles, setRoles] = useState<IamRole[]>([]);
     const [permissions, setPermissions] = useState<IamPermission[]>([]);
+    const [cameraOptions, setCameraOptions] = useState<CameraOption[]>([]);
     const [activeRoleKey, setActiveRoleKey] = useState<string>('');
     const [loading, setLoading] = useState(true);
 
     const loadData = async () => {
         setLoading(true);
         try {
-            const [u, r, p] = await Promise.all([
+            const [u, r, p, c] = await Promise.all([
                 apiClient.getIamUsers(),
                 apiClient.getIamRoles(),
-                apiClient.getIamPermissions()
+                apiClient.getIamPermissions(),
+                apiClient.getCameras()
             ]);
+            const cameras = Array.isArray(c)
+                ? c
+                : (c && typeof c === 'object' && 'data' in c && Array.isArray((c as { data?: unknown }).data))
+                    ? ((c as { data: unknown[] }).data)
+                    : [];
             setUsers(u);
             setRoles(r);
             setPermissions(p);
+            setCameraOptions(
+                cameras
+                    .filter((item): item is { id: string; name?: string; regionCode?: string } => Boolean(item?.id))
+                    .map(item => ({
+                        id: item.id,
+                        name: item.name || item.id,
+                        regionCode: item.regionCode
+                    }))
+            );
             if (!activeRoleKey && r.length) setActiveRoleKey(r[0].roleKey);
         } catch (error) {
             toast.error(error instanceof Error ? error.message : '加载权限配置失败');
@@ -68,6 +90,24 @@ export const IamPage: React.FC = () => {
     }, [permissions]);
 
     const activeRole = roles.find(r => r.roleKey === activeRoleKey);
+    const cameraMap = useMemo(() => {
+        return new Map(cameraOptions.map(camera => [camera.id, camera]));
+    }, [cameraOptions]);
+
+    const availableCameraOptions = useMemo(() => {
+        if (!activeRole) return [];
+        return cameraOptions.filter(camera => !activeRole.dataScope.cameraIds.includes(camera.id));
+    }, [activeRole, cameraOptions]);
+
+    const buildRegionCodesByCameraIds = (cameraIds: string[]) => {
+        return Array.from(
+            new Set(
+                cameraIds
+                    .map(cameraId => cameraMap.get(cameraId)?.regionCode?.trim())
+                    .filter((regionCode): regionCode is string => Boolean(regionCode))
+            )
+        );
+    };
 
     const toggleUserRole = async (user: IamUser, roleKey: string) => {
         const nextRoles = user.roles.includes(roleKey)
@@ -105,6 +145,28 @@ export const IamPage: React.FC = () => {
         } catch (error) {
             toast.error(error instanceof Error ? error.message : '更新失败');
         }
+    };
+
+    const addCameraToScope = async (cameraId: string) => {
+        if (!activeRole || !cameraId) return;
+        const nextCameraIds = Array.from(new Set([...activeRole.dataScope.cameraIds, cameraId]));
+        await updateRoleScope({
+            ...activeRole.dataScope,
+            all: false,
+            cameraIds: nextCameraIds,
+            regionCodes: buildRegionCodesByCameraIds(nextCameraIds)
+        });
+    };
+
+    const removeCameraFromScope = async (cameraId: string) => {
+        if (!activeRole) return;
+        const nextCameraIds = activeRole.dataScope.cameraIds.filter(id => id !== cameraId);
+        await updateRoleScope({
+            ...activeRole.dataScope,
+            all: false,
+            cameraIds: nextCameraIds,
+            regionCodes: buildRegionCodesByCameraIds(nextCameraIds)
+        });
     };
 
     if (loading) {
@@ -200,9 +262,40 @@ export const IamPage: React.FC = () => {
                                     </button>
                                 </div>
                                 {!activeRole.dataScope.all && (
-                                    <div className="mt-2 text-xs text-gray-500">
-                                        摄像头: {activeRole.dataScope.cameraIds.join(', ') || '未设置'}<br />
-                                        区域: {activeRole.dataScope.regionCodes.join(', ') || '未设置'}
+                                    <div className="mt-3 space-y-2 text-xs text-gray-500">
+                                        <div>
+                                            <label className="text-xs text-gray-600">可见摄像头</label>
+                                            <select
+                                                className="mt-1 w-full px-2 py-1.5 border border-gray-200 rounded bg-white text-xs text-gray-700"
+                                                value=""
+                                                onChange={(e) => {
+                                                    addCameraToScope(e.target.value);
+                                                    e.currentTarget.value = '';
+                                                }}
+                                            >
+                                                <option value="" disabled>选择摄像头加入数据范围</option>
+                                                {availableCameraOptions.map(camera => (
+                                                    <option key={camera.id} value={camera.id}>
+                                                        {camera.name}{camera.regionCode ? ` (${camera.regionCode})` : ''}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div className="flex gap-1.5 flex-wrap">
+                                            {activeRole.dataScope.cameraIds.length ? activeRole.dataScope.cameraIds.map(cameraId => (
+                                                <button
+                                                    key={cameraId}
+                                                    onClick={() => removeCameraFromScope(cameraId)}
+                                                    className="px-2 py-1 rounded-full border border-blue-200 bg-blue-50 text-blue-700"
+                                                    title="点击移除"
+                                                >
+                                                    {(cameraMap.get(cameraId)?.name || cameraId)} ×
+                                                </button>
+                                            )) : <span>未设置摄像头</span>}
+                                        </div>
+                                        <div>
+                                            区域: {activeRole.dataScope.regionCodes.join(', ') || '未设置'}
+                                        </div>
                                     </div>
                                 )}
                             </div>
