@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { apiClient, DataScope } from '../api/client';
-import { useToastContext } from '../contexts/ToastContext';
+import { apiClient, DataScope } from '@/api/client';
+import { useToastContext } from '@/contexts/ToastContext';
 
 interface IamUser {
     id: string;
@@ -306,4 +306,3 @@ export const IamPage: React.FC = () => {
         </div>
     );
 };
-

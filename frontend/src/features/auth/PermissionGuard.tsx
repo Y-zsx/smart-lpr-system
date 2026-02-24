@@ -1,5 +1,5 @@
 import React from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from './AuthContext';
 
 interface PermissionGuardProps {
     permission?: string;
@@ -21,4 +21,3 @@ export const PermissionGuard: React.FC<PermissionGuardProps> = ({ permission, ro
     if (!allowed) return <>{fallback}</>;
     return <>{children}</>;
 };
-

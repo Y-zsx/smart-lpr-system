@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { getAlarms as getAlarmsFromDb, updateAlarmStatus, deleteAlarm as deleteAlarmFromDb, deleteAlarmsByPlateNumber } from '../utils/db';
-import { AuthenticatedRequest } from '../middlewares/auth';
-import { filterItemsByScope } from '../utils/dataScope';
+import { getAlarms as getAlarmsFromDb, updateAlarmStatus, deleteAlarm as deleteAlarmFromDb, deleteAlarmsByPlateNumber } from '../../utils/db';
+import { AuthenticatedRequest } from '../auth';
+import { filterItemsByScope } from '../../utils/dataScope';
 
 export const getAlarms = async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -22,17 +22,11 @@ export const getAlarms = async (req: AuthenticatedRequest, res: Response) => {
 export const markAlarmAsRead = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        console.log(`[AlarmController] Marking alarm as read: id=${id}, type=${typeof id}`);
-        
         if (!id || isNaN(Number(id))) {
-            console.error(`[AlarmController] Invalid alarm ID: ${id}`);
             res.status(400).json({ message: 'Invalid alarm ID' });
             return;
         }
-
         const success = await updateAlarmStatus(Number(id), true);
-        console.log(`[AlarmController] Mark as read result: ${success}`);
-        
         if (success) {
             res.json({ success: true });
         } else {
@@ -47,17 +41,11 @@ export const markAlarmAsRead = async (req: Request, res: Response) => {
 export const deleteAlarm = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        console.log(`[AlarmController] Deleting alarm: id=${id}, type=${typeof id}`);
-
         if (!id || isNaN(Number(id))) {
-            console.error(`[AlarmController] Invalid alarm ID: ${id}`);
             res.status(400).json({ message: 'Invalid alarm ID' });
             return;
         }
-
         const success = await deleteAlarmFromDb(Number(id));
-        console.log(`[AlarmController] Delete result: ${success}`);
-
         if (success) {
             res.json({ success: true });
         } else {

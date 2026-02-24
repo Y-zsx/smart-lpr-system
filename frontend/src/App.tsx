@@ -1,12 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { MainLayout } from './layouts/MainLayout';
-import { DashboardPage } from './pages/DashboardPage';
-import { LiveMonitorPage } from './pages/LiveMonitorPage';
-import { RecordsPage } from './pages/RecordsPage';
-import { AlarmsPage } from './pages/AlarmsPage';
+import { DashboardPage } from '@/features/dashboard';
+import { LiveMonitorPage } from '@/features/monitor';
+import { RecordsPage } from '@/features/records';
+import { AlarmsPage } from '@/features/alarms';
 import { SettingsPage } from './pages/SettingsPage';
-import { IamPage } from './pages/IamPage';
+import { IamPage } from '@/features/iam';
 import { SettingsModal } from './components/SettingsModal';
 import { usePlateStore } from './store/plateStore';
 import { simulationService } from './services/simulationService';
@@ -15,8 +15,7 @@ import { hapticFeedback } from './utils/mobileFeatures';
 import { ToastProvider } from './contexts/ToastContext';
 import { ConfirmProvider } from './contexts/ConfirmContext';
 import { useToastContext } from './contexts/ToastContext';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { PermissionGuard } from './components/PermissionGuard';
+import { AuthProvider, useAuth, PermissionGuard } from '@/features/auth';
 
 function AppContent() {
     const { settings } = usePlateStore();

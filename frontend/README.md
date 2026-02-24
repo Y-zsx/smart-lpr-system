@@ -23,15 +23,19 @@ npm run build
 frontend/
 ├── src/
 │   ├── api/          # API 接口封装
-│   ├── components/    # UI 组件
-│   ├── pages/         # 页面路由
-│   ├── store/         # 状态管理 (Zustand)
-│   ├── layouts/       # 页面布局
-│   ├── types/         # TypeScript 类型
-│   └── utils/         # 工具函数
-├── public/            # 静态资源
+│   ├── features/     # 按业务域：auth、iam、dashboard、records、alarms、monitor（页面与域内组件）
+│   ├── components/   # 共享 UI 组件
+│   ├── pages/        # 其余页面（如设置）
+│   ├── store/        # 状态管理 (Zustand)
+│   ├── layouts/      # 页面布局
+│   ├── contexts/     # 全局 Context
+│   ├── types/        # TypeScript 类型
+│   └── utils/        # 工具函数
+├── public/           # 静态资源
 └── package.json
 ```
+
+新功能与页面建议放在 `src/features/<domain>`，详见 [项目结构说明](../docs/PROJECT_STRUCTURE.md)。
 
 ## 🛠️ 技术栈
 

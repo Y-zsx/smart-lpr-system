@@ -1,6 +1,6 @@
 import { RowDataPacket } from 'mysql2';
 import { PoolConnection } from 'mysql2/promise';
-import { pool } from '../config/database';
+import { pool } from '../../config/database';
 
 export interface DataScope {
   all: boolean;
@@ -305,4 +305,3 @@ export async function updateRoleDataScope(
     connection.release();
   }
 }
-

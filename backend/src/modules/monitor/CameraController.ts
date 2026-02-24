@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
-import { getCamerasFromDb, saveCameraToDb, deleteCameraFromDb, Camera } from '../utils/db';
-import { AuthenticatedRequest } from '../middlewares/auth';
-import { filterItemsByScope } from '../utils/dataScope';
+import { getCamerasFromDb, saveCameraToDb, deleteCameraFromDb, Camera } from '../../utils/db';
+import { AuthenticatedRequest } from '../auth';
+import { filterItemsByScope } from '../../utils/dataScope';
 
 export const getCameras = async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -17,14 +17,12 @@ export const getCameras = async (req: AuthenticatedRequest, res: Response) => {
 export const addCamera = async (req: Request, res: Response) => {
     try {
         const cameraData: Omit<Camera, 'id' | 'status'> = req.body;
-        
         const newCamera: Camera = {
             ...cameraData,
             id: `cam-${Date.now()}`,
             status: 'offline',
             lastActive: Date.now()
         };
-
         const savedCamera = await saveCameraToDb(newCamera);
         res.json(savedCamera);
     } catch (error) {
@@ -37,15 +35,12 @@ export const updateCamera = async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const cameraData: Partial<Camera> = req.body;
-        
         const cameras = await getCamerasFromDb();
         const camera = cameras.find(c => c.id === id);
-        
         if (!camera) {
             res.status(404).json({ message: 'Camera not found' });
             return;
         }
-
         const updatedCamera = { ...camera, ...cameraData };
         await saveCameraToDb(updatedCamera);
         res.json(updatedCamera);
@@ -58,12 +53,10 @@ export const updateCamera = async (req: Request, res: Response) => {
 export const deleteCamera = async (req: Request, res: Response) => {
     try {
         const { id } = req.query;
-        
         if (!id || typeof id !== 'string') {
             res.status(400).json({ message: 'Camera ID is required' });
             return;
         }
-
         await deleteCameraFromDb(id);
         res.json({ message: 'Camera deleted successfully' });
     } catch (error) {

@@ -83,43 +83,37 @@ smart-lpr-system/
 ├── frontend/              # 前端应用 (React + TypeScript)
 │   ├── src/
 │   │   ├── api/          # API 接口封装
-│   │   ├── features/     # 业务域脚手架
-│   │   ├── components/   # UI 组件
-│   │   ├── pages/        # 页面路由
-│   │   ├── store/        # 状态管理
+│   │   ├── features/     # 按业务域（auth、iam、dashboard、records、alarms、monitor）
+│   │   ├── components/   # 共享 UI 组件
+│   │   ├── pages/        # 其余页面（如设置）
+│   │   ├── store/        # 状态管理 (Zustand)
+│   │   ├── contexts/     # 全局 Context（含对 features 的兼容再导出）
 │   │   └── utils/        # 工具函数
-│   └── public/           # 静态资源
+│   └── public/
 │
-├── backend/              # 后端服务 (Node.js + Express)
+├── backend/               # 后端服务 (Node.js + Express)
 │   ├── src/
-│   │   ├── modules/      # 业务模块脚手架
-│   │   ├── controllers/  # 业务控制器
-│   │   ├── routes/       # API 路由
-│   │   ├── services/     # 领域服务
-│   │   └── config/       # 配置文件
-│   └── uploads/           # 上传文件存储
+│   │   ├── modules/      # 按业务域（auth、iam、records、stats、alarms、monitor）
+│   │   ├── routes/       # API 路由（从 modules 引用）
+│   │   ├── middlewares/  # 通用中间件
+│   │   ├── config/       # 配置与数据库
+│   │   ├── types/        # 类型定义
+│   │   └── utils/        # 共享工具与数据访问
+│   └── uploads/          # 上传文件存储
 │
 ├── ai-service/           # AI 识别服务 (Python + FastAPI)
 │   ├── app/              # 服务核心实现
-│   ├── evaluation/       # 评估脚本实现
-│   ├── main.py           # 兼容入口
-│   ├── evaluation.py     # 兼容入口
-│   └── requirements.txt  # Python 依赖
+│   ├── evaluation/       # 评估脚本
+│   ├── main.py           # 兼容入口 → app.main
+│   ├── evaluation.py     # 兼容入口 → evaluation.evaluate
+│   └── requirements.txt
 │
-├── docs/                 # 项目文档
-│   ├── QUICK_START.md    # 快速开始指南
-│   ├── CAMERA_SETUP.md   # 摄像头配置
-│   ├── DATABASE.md       # 数据库配置
-│   └── IAM_RBAC.md       # 权限模型说明
-│
-├── scripts/              # 数据库脚本
-│   ├── init_database.sql # 初始化脚本
-│   └── verify_database.sql # 验证脚本
-│
-└── start-dev.ps1         # Windows 启动脚本
+├── docs/                 # 项目文档（见下方「文档」）
+├── scripts/               # 数据库脚本
+└── start-dev.ps1         # Windows 一键启动
 ```
 
-新代码建议放在 `backend/src/modules` 与 `frontend/src/features`，详见 [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md)。
+新功能请放在 **backend/src/modules/<domain>** 与 **frontend/src/features/<domain>**，约定与模块说明见 [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md)。
 
 ## 技术栈
 
@@ -131,13 +125,12 @@ smart-lpr-system/
 
 ## 文档
 
+- [项目结构](docs/PROJECT_STRUCTURE.md) — 按域目录与开发约定
+- [文档索引](docs/README.md) — 全部文档入口
+- [快速开始](docs/QUICK_START.md) · [摄像头配置](docs/CAMERA_SETUP.md) · [数据库配置](docs/DATABASE.md)
+- [数据记录说明](docs/PLATE_RECORDS.md) · [权限管理](docs/IAM_RBAC.md) · [高德地图配置](docs/AMAP_SETUP.md)
+- [功能测试指南](docs/TESTING.md) — 构建、健康检查与手动测试清单
 - [云服务器部署](docs/DEPLOYMENT.md)
-- [快速开始](docs/QUICK_START.md)
-- [摄像头配置](docs/CAMERA_SETUP.md)
-- [数据库配置](docs/DATABASE.md)
-- [数据记录说明](docs/PLATE_RECORDS.md)
-- [高德地图配置](docs/AMAP_SETUP.md)
-- [文档索引](docs/README.md)
 
 ## 开发
 

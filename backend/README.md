@@ -43,24 +43,26 @@ npm start
 ```
 backend/
 ├── src/
-│   ├── config/        # 配置文件
-│   ├── controllers/   # 业务控制器
-│   ├── routes/        # API 路由
-│   ├── utils/         # 工具函数
+│   ├── modules/       # 按业务域：auth、iam、records、stats、alarms、monitor
+│   ├── routes/        # API 路由（从 modules 引用）
+│   ├── middlewares/   # 通用中间件
+│   ├── config/        # 配置与数据库
+│   ├── types/         # 类型定义
+│   ├── utils/         # 共享工具与数据访问
 │   └── index.ts       # 入口文件
 └── uploads/           # 上传文件存储
 ```
 
+新功能建议放在 `src/modules/<domain>`，详见 [项目结构说明](../docs/PROJECT_STRUCTURE.md)。
+
 ## 🔌 主要 API
 
-- `GET /api/plates` - 获取识别记录（支持分组）
-- `POST /api/plates` - 保存识别记录
-- `POST /api/recognize` - 图片识别（支持多车牌，返回 `{ plates: LicensePlate[] }`）
-- `GET /api/stats/dashboard` - 仪表盘统计
-- `GET /api/stats/daily` - 每日统计
-- `GET /api/blacklist` - 黑名单管理
-- `GET /api/alarms` - 告警记录
-- `GET /api/cameras` - 摄像头管理
+- **鉴权**：`POST /api/auth/login`、`GET /api/auth/me`
+- **IAM**：`GET /api/iam/users|roles|permissions`，`PUT /api/iam/users/:userId/roles` 等
+- **记录**：`GET /api/plates`（支持分组）、`POST /api/plates`、`POST /api/recognize`、`GET /api/export-records`
+- **统计**：`GET /api/stats/dashboard`、`GET /api/stats/daily`、`GET /api/stats/region`
+- **告警与黑名单**：`GET /api/alarms`、`GET /api/blacklist` 等
+- **监控**：`GET /api/cameras`、`POST /api/upload-url` 等
 
 ## 📚 相关文档
 

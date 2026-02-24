@@ -1,5 +1,5 @@
-import type { AuthUser } from '../middlewares/auth';
-import type { AccessContext } from '../services/rbacService';
+import type { AuthUser } from '../modules/auth/auth';
+import type { AccessContext } from '../modules/iam/rbacService';
 
 declare global {
   namespace Express {

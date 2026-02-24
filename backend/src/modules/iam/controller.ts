@@ -6,7 +6,7 @@ import {
   updateRoleDataScope,
   updateRolePermissions,
   updateUserRoles
-} from '../services/rbacService';
+} from './rbacService';
 
 export async function getUsers(_req: Request, res: Response) {
   try {
@@ -76,4 +76,3 @@ export async function setRoleDataScope(req: Request, res: Response) {
     res.status(500).json({ message: 'Failed to update role data scope' });
   }
 }
-

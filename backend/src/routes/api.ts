@@ -1,16 +1,16 @@
-import { Router, Request, Response } from 'express';
+import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
-import * as PlateController from '../controllers/PlateController';
-import * as StatsController from '../controllers/StatsController';
-import * as UploadController from '../controllers/UploadController';
-import * as BlacklistController from '../controllers/BlacklistController';
-import * as AlarmController from '../controllers/AlarmController';
-import * as ExportController from '../controllers/ExportController';
-import * as CameraController from '../controllers/CameraController';
-import * as AuthController from '../controllers/AuthController';
-import * as IamController from '../controllers/IamController';
-import { applyDataScope, requireAuth, requirePermission } from '../middlewares/auth';
+import * as PlateController from '../modules/records/PlateController';
+import * as ExportController from '../modules/records/ExportController';
+import * as StatsController from '../modules/stats/controller';
+import * as UploadController from '../modules/monitor/UploadController';
+import * as BlacklistController from '../modules/alarms/BlacklistController';
+import * as AlarmController from '../modules/alarms/AlarmController';
+import * as CameraController from '../modules/monitor/CameraController';
+import * as AuthController from '../modules/auth/controller';
+import * as IamController from '../modules/iam/controller';
+import { applyDataScope, requireAuth, requirePermission } from '../modules/auth';
 
 const router = Router();
 const upload = multer({ dest: path.join(__dirname, '../../uploads/temp') });
@@ -50,16 +50,9 @@ router.post('/blacklist', requireAuth, requirePermission('blacklist.manage'), Bl
 router.delete('/blacklist', requireAuth, requirePermission('blacklist.manage'), BlacklistController.deleteBlacklist);
 
 // Alarms
-router.use('/alarms', (req, res, next) => {
-    console.log(`[API Router] Alarms route hit: ${req.method} ${req.url}`);
-    next();
-});
 router.get('/alarms', requireAuth, requirePermission('alarms.view'), applyDataScope(), AlarmController.getAlarms);
 router.put('/alarms/:id/read', requireAuth, requirePermission('alarm.manage'), AlarmController.markAlarmAsRead);
-router.delete('/alarms/:id', requireAuth, requirePermission('alarm.manage'), (req, res, next) => {
-    console.log(`[API Router] DELETE /alarms/:id hit. ID: ${req.params.id}`);
-    next();
-}, AlarmController.deleteAlarm);
+router.delete('/alarms/:id', requireAuth, requirePermission('alarm.manage'), AlarmController.deleteAlarm);
 router.delete('/alarms/plate/:plateNumber', requireAuth, requirePermission('alarm.manage'), AlarmController.deleteAlarmsByPlate);
 
 // Cameras

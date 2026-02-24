@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { AppError } from '../utils/AppError';
-import { AuthenticatedRequest, AuthUser, signToken } from '../middlewares/auth';
-import { findUserByCredentials, getUserAccessContext } from '../services/rbacService';
+import { AppError } from '../../utils/AppError';
+import { AuthenticatedRequest, AuthUser, signToken } from './auth';
+import { findUserByCredentials, getUserAccessContext } from '../iam/rbacService';
 
 export function login(req: Request, res: Response, next: NextFunction) {
   const { username, password } = req.body as { username?: string; password?: string };
@@ -64,4 +64,3 @@ export function me(req: AuthenticatedRequest, res: Response) {
     }
   });
 }
-

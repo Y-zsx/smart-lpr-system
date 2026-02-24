@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from 'express';
 import jwt, { JwtPayload, SignOptions } from 'jsonwebtoken';
-import { AppError } from '../utils/AppError';
-import { AccessContext, getUserAccessContext } from '../services/rbacService';
+import { AppError } from '../../utils/AppError';
+import { AccessContext, getUserAccessContext } from '../iam/rbacService';
 
 type Role = 'admin' | 'viewer';
 
@@ -98,4 +98,3 @@ export function applyDataScope() {
     next();
   };
 }
-
