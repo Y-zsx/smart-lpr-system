@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
 import { getPlates, getPlateGroups } from '../utils/db';
 import { DashboardStats } from '../types';
+import { AuthenticatedRequest } from '../middlewares/auth';
+import { filterPlateGroupsByScope } from '../utils/dataScope';
 
-export const getDashboardStats = async (req: Request, res: Response) => {
+export const getDashboardStats = async (req: AuthenticatedRequest, res: Response) => {
     try {
         // 获取日期参数，如果未提供则表示总量模式
         const { date } = req.query;
@@ -48,6 +50,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
                 start: selectedStart.getTime(),
                 end: selectedEnd.getTime()
             });
+            selectedGroups = filterPlateGroupsByScope(selectedGroups, req.dataScope);
             
             // 计算所选日期的统计数据（不重复的车牌数）
             total = selectedGroups.length;
@@ -68,10 +71,11 @@ export const getDashboardStats = async (req: Request, res: Response) => {
             });
 
             // 获取前一天的数据（不重复车牌）
-            const previousDayGroups = await getPlateGroups({
+            let previousDayGroups = await getPlateGroups({
                 start: previousDayStart.getTime(),
                 end: previousDayEnd.getTime()
             });
+            previousDayGroups = filterPlateGroupsByScope(previousDayGroups, req.dataScope);
             const previousDayTotal = previousDayGroups.length;
             const previousDayBlue = previousDayGroups.filter(g => g.plateType === 'blue').length;
             const previousDayGreen = previousDayGroups.filter(g => g.plateType === 'green').length;
@@ -114,6 +118,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
         } else {
             // 总量模式：获取所有历史数据
             selectedGroups = await getPlateGroups();
+            selectedGroups = filterPlateGroupsByScope(selectedGroups, req.dataScope);
             
             // 计算总量统计数据（不重复的车牌数）
             total = selectedGroups.length;
@@ -153,7 +158,7 @@ export const getDashboardStats = async (req: Request, res: Response) => {
     }
 };
 
-export const getDailyStats = async (req: Request, res: Response) => {
+export const getDailyStats = async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { end } = req.query;
         
@@ -175,10 +180,11 @@ export const getDailyStats = async (req: Request, res: Response) => {
             dayEnd.setHours(23, 59, 59, 999);
             
             try {
-                const dayGroups = await getPlateGroups({
+                let dayGroups = await getPlateGroups({
                     start: dayStart.getTime(),
                     end: dayEnd.getTime()
                 });
+                dayGroups = filterPlateGroupsByScope(dayGroups, req.dataScope);
                 statsMap.set(dateStr, dayGroups.length);
             } catch (error) {
                 console.warn(`获取 ${dateStr} 的数据失败:`, error);
@@ -193,7 +199,7 @@ export const getDailyStats = async (req: Request, res: Response) => {
     }
 };
 
-export const getRegionStats = async (req: Request, res: Response) => {
+export const getRegionStats = async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { range, date } = req.query;
         
@@ -210,9 +216,11 @@ export const getRegionStats = async (req: Request, res: Response) => {
                 start: startOfDay.getTime(),
                 end: endOfDay.getTime()
             });
+            groups = filterPlateGroupsByScope(groups, req.dataScope);
         } else {
             // 获取所有历史数据
             groups = await getPlateGroups();
+            groups = filterPlateGroupsByScope(groups, req.dataScope);
         }
 
         // 按省份统计：提取车牌号码的第一个字符（省份简称）

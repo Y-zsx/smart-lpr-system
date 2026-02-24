@@ -8,51 +8,64 @@ import * as BlacklistController from '../controllers/BlacklistController';
 import * as AlarmController from '../controllers/AlarmController';
 import * as ExportController from '../controllers/ExportController';
 import * as CameraController from '../controllers/CameraController';
+import * as AuthController from '../controllers/AuthController';
+import * as IamController from '../controllers/IamController';
+import { applyDataScope, requireAuth, requirePermission } from '../middlewares/auth';
 
 const router = Router();
 const upload = multer({ dest: path.join(__dirname, '../../uploads/temp') });
 
+// Auth
+router.post('/auth/login', AuthController.login);
+router.get('/auth/me', requireAuth, AuthController.me);
+router.get('/iam/users', requireAuth, requirePermission('iam.manage'), IamController.getUsers);
+router.get('/iam/roles', requireAuth, requirePermission('iam.manage'), IamController.getRoles);
+router.get('/iam/permissions', requireAuth, requirePermission('iam.manage'), IamController.getPermissions);
+router.put('/iam/users/:userId/roles', requireAuth, requirePermission('iam.manage'), IamController.setUserRoles);
+router.put('/iam/roles/:roleKey/permissions', requireAuth, requirePermission('iam.manage'), IamController.setRolePermissions);
+router.put('/iam/roles/:roleKey/data-scope', requireAuth, requirePermission('iam.manage'), IamController.setRoleDataScope);
+
 // Plates
-router.get('/plates', PlateController.getPlates);
-router.post('/plates', PlateController.savePlate);
-router.delete('/plates', PlateController.deletePlate);
-router.delete('/plates/by-number', PlateController.deletePlatesByNumber);
-router.post('/recognize', upload.single('file'), PlateController.recognizePlate);
+router.get('/plates', requireAuth, requirePermission('records.view'), applyDataScope(), PlateController.getPlates);
+router.post('/plates', requireAuth, requirePermission('plate.manage'), PlateController.savePlate);
+router.delete('/plates', requireAuth, requirePermission('plate.manage'), PlateController.deletePlate);
+router.delete('/plates/by-number', requireAuth, requirePermission('plate.manage'), PlateController.deletePlatesByNumber);
+router.post('/recognize', requireAuth, requirePermission('monitor.view'), requirePermission('plate.manage'), upload.single('file'), PlateController.recognizePlate);
 
 // Upload
-router.post('/upload-url', UploadController.getUploadUrl);
-router.put('/upload/put/:filename', UploadController.handleFileUpload);
+router.post('/upload-url', requireAuth, requirePermission('plate.manage'), UploadController.getUploadUrl);
+router.put('/upload/put/:filename', requireAuth, requirePermission('plate.manage'), UploadController.handleFileUpload);
 
 // Stats
-router.get('/stats/daily', StatsController.getDailyStats);
-router.get('/stats/dashboard', StatsController.getDashboardStats);
-router.get('/stats/region', StatsController.getRegionStats);
+router.get('/stats/daily', requireAuth, requirePermission('dashboard.view'), applyDataScope(), StatsController.getDailyStats);
+router.get('/stats/dashboard', requireAuth, requirePermission('dashboard.view'), applyDataScope(), StatsController.getDashboardStats);
+router.get('/stats/region', requireAuth, requirePermission('dashboard.view'), applyDataScope(), StatsController.getRegionStats);
 
 // Export
-router.get('/export-records', ExportController.exportRecords);
+router.get('/export-records', requireAuth, requirePermission('records.view'), applyDataScope(), ExportController.exportRecords);
 
 // Blacklist
-router.get('/blacklist', BlacklistController.getBlacklist);
-router.post('/blacklist', BlacklistController.addBlacklist);
-router.delete('/blacklist', BlacklistController.deleteBlacklist);
+router.get('/blacklist', requireAuth, requirePermission('alarms.view'), BlacklistController.getBlacklist);
+router.post('/blacklist', requireAuth, requirePermission('blacklist.manage'), BlacklistController.addBlacklist);
+router.delete('/blacklist', requireAuth, requirePermission('blacklist.manage'), BlacklistController.deleteBlacklist);
 
 // Alarms
 router.use('/alarms', (req, res, next) => {
     console.log(`[API Router] Alarms route hit: ${req.method} ${req.url}`);
     next();
 });
-router.get('/alarms', AlarmController.getAlarms);
-router.put('/alarms/:id/read', AlarmController.markAlarmAsRead);
-router.delete('/alarms/:id', (req, res, next) => {
+router.get('/alarms', requireAuth, requirePermission('alarms.view'), applyDataScope(), AlarmController.getAlarms);
+router.put('/alarms/:id/read', requireAuth, requirePermission('alarm.manage'), AlarmController.markAlarmAsRead);
+router.delete('/alarms/:id', requireAuth, requirePermission('alarm.manage'), (req, res, next) => {
     console.log(`[API Router] DELETE /alarms/:id hit. ID: ${req.params.id}`);
     next();
 }, AlarmController.deleteAlarm);
-router.delete('/alarms/plate/:plateNumber', AlarmController.deleteAlarmsByPlate);
+router.delete('/alarms/plate/:plateNumber', requireAuth, requirePermission('alarm.manage'), AlarmController.deleteAlarmsByPlate);
 
 // Cameras
-router.get('/cameras', CameraController.getCameras);
-router.post('/cameras', CameraController.addCamera);
-router.put('/cameras/:id', CameraController.updateCamera);
-router.delete('/cameras', CameraController.deleteCamera);
+router.get('/cameras', requireAuth, requirePermission('monitor.view'), applyDataScope(), CameraController.getCameras);
+router.post('/cameras', requireAuth, requirePermission('camera.manage'), CameraController.addCamera);
+router.put('/cameras/:id', requireAuth, requirePermission('camera.manage'), CameraController.updateCamera);
+router.delete('/cameras', requireAuth, requirePermission('camera.manage'), CameraController.deleteCamera);
 
 export default router;

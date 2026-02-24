@@ -6,7 +6,11 @@ import { CameraMap } from '../components/CameraMap';
 import { FileUpload } from '../components/FileUpload';
 import { Camera, Upload, Map, List, Grid } from 'lucide-react';
 
-export const LiveMonitorPage: React.FC = () => {
+interface LiveMonitorPageProps {
+    canManageCamera?: boolean;
+}
+
+export const LiveMonitorPage: React.FC<LiveMonitorPageProps> = ({ canManageCamera = true }) => {
     const [mode, setMode] = useState<'camera' | 'upload' | 'multi'>('camera');
     const [rightView, setRightView] = useState<'list' | 'map'>('list');
 
@@ -87,7 +91,7 @@ export const LiveMonitorPage: React.FC = () => {
                 {/* Content Area */}
                 <div className="flex-1 min-h-0">
                     {rightView === 'list' ? (
-                        <CameraList />
+                        <CameraList canManage={canManageCamera} />
                     ) : (
                         <div className="bg-white rounded-xl border border-gray-100 shadow-sm h-full p-4">
                             <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">

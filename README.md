@@ -85,6 +85,7 @@ smart-lpr-system/
 ├── frontend/              # 前端应用 (React + TypeScript)
 │   ├── src/
 │   │   ├── api/          # API 接口封装
+│   │   ├── features/     # 业务域脚手架（稳妥版）
 │   │   ├── components/   # UI 组件
 │   │   ├── pages/        # 页面路由
 │   │   ├── store/        # 状态管理
@@ -93,19 +94,25 @@ smart-lpr-system/
 │
 ├── backend/              # 后端服务 (Node.js + Express)
 │   ├── src/
+│   │   ├── modules/      # 业务模块脚手架（稳妥版）
 │   │   ├── controllers/  # 业务控制器
 │   │   ├── routes/       # API 路由
+│   │   ├── services/     # 领域服务
 │   │   └── config/       # 配置文件
 │   └── uploads/           # 上传文件存储
 │
 ├── ai-service/           # AI 识别服务 (Python + FastAPI)
-│   ├── main.py           # 服务入口
+│   ├── app/              # 服务核心实现
+│   ├── evaluation/       # 评估脚本实现
+│   ├── main.py           # 兼容入口
+│   ├── evaluation.py     # 兼容入口
 │   └── requirements.txt  # Python 依赖
 │
 ├── docs/                 # 项目文档
 │   ├── QUICK_START.md    # 快速开始指南
 │   ├── CAMERA_SETUP.md   # 摄像头配置
-│   └── DATABASE.md       # 数据库配置
+│   ├── DATABASE.md       # 数据库配置
+│   └── IAM_RBAC.md       # 权限模型说明
 │
 ├── scripts/              # 数据库脚本
 │   ├── init_database.sql # 初始化脚本
@@ -113,6 +120,8 @@ smart-lpr-system/
 │
 └── start-dev.ps1         # Windows 启动脚本
 ```
+
+> 说明：当前为“稳妥版结构优化”，以兼容现有运行逻辑为优先。旧目录继续可用，新代码建议优先进入 `backend/src/modules` 与 `frontend/src/features`。
 
 ## 🛠️ 技术栈
 

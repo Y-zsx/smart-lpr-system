@@ -8,11 +8,31 @@
 # 安装依赖
 pip install -r requirements.txt
 
-# 启动服务
+# 启动服务（兼容入口）
 python main.py
 ```
 
 服务运行在 `http://localhost:8001`
+
+## 📁 目录结构（稳妥版）
+
+```text
+ai-service/
+├── app/
+│   ├── __init__.py
+│   └── main.py          # AI HTTP 服务核心实现
+├── evaluation/
+│   ├── __init__.py
+│   └── evaluate.py      # 评估脚本核心实现
+├── main.py              # 兼容入口（委托到 app/main.py）
+├── evaluation.py        # 兼容入口（委托到 evaluation/evaluate.py）
+├── requirements.txt
+└── README.md
+```
+
+说明：
+- 现有启动命令 `python main.py` 和 `python evaluation.py ...` 继续可用。
+- 新增分层目录后，后续功能可按 `app/` 与 `evaluation/` 扩展，减少单文件膨胀。
 
 ## 🔌 API 接口
 

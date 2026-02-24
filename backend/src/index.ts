@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import apiRoutes from './routes/api';
 import { testConnection, initDatabase } from './config/database';
+import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
 
 dotenv.config();
 
@@ -16,8 +17,16 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(cors());
-app.use(express.json());
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:3000')
+  .split(',')
+  .map(origin => origin.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: true
+}));
+app.use(express.json({ limit: '2mb' }));
 
 // Serve static uploads
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
@@ -42,14 +51,8 @@ app.get('/', (req: Request, res: Response) => {
 // API Routes
 app.use('/api', apiRoutes);
 
-// Mock user info endpoint for frontend compatibility
-app.get('/__user_info__', (req: Request, res: Response) => {
-  res.json({
-    id: 'mock-user-id',
-    name: 'Admin User',
-    role: 'admin'
-  });
-});
+app.use(notFoundHandler);
+app.use(errorHandler);
 
 // 初始化数据库并启动服务器
 async function startServer() {

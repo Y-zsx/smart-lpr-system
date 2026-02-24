@@ -30,6 +30,7 @@ export interface PlateRecord {
     timestamp: number;
     cameraId?: string;
     cameraName?: string;
+    regionCode?: string;
     location?: string;
     imageUrl?: string;
     rect?: Rect;
@@ -60,10 +61,13 @@ export interface BlacklistItem {
 export interface Alarm {
     id: number;
     plate_id?: string;
+    record_id?: string;
     blacklist_id?: number;
     timestamp: number;
     is_read: number;
     plate_number: string;
+    camera_id?: string;
+    region_code?: string;
     image_path?: string;
     location?: string;
     latitude?: number; // 纬度

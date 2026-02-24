@@ -10,6 +10,7 @@ export interface CameraDevice {
     status: 'online' | 'offline';
     lastActive?: number;
     location?: string; // 摄像头位置信息（地址文本）
+    regionCode?: string;
     latitude?: number; // 纬度
     longitude?: number; // 经度
 }

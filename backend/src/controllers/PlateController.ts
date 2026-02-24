@@ -5,8 +5,10 @@ import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import FormData from 'form-data';
 import fs from 'fs-extra';
+import { AuthenticatedRequest } from '../middlewares/auth';
+import { filterPlateGroupsByScope } from '../utils/dataScope';
 
-export const getPlates = async (req: Request, res: Response) => {
+export const getPlates = async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { start, end, type, plateNumber, groupBy } = req.query;
 
@@ -18,7 +20,7 @@ export const getPlates = async (req: Request, res: Response) => {
                 type: type as string | undefined,
                 plateNumber: plateNumber as string | undefined
             });
-            res.json(groups);
+            res.json(filterPlateGroupsByScope(groups, req.dataScope));
             return;
         }
 
@@ -32,10 +34,11 @@ export const getPlates = async (req: Request, res: Response) => {
                 type: type as string | undefined,
                 plateNumber: plateNumber as string | undefined
             });
+            const scopedGroups = filterPlateGroupsByScope(groups, req.dataScope);
 
             // 将分组数据转换为单条记录列表（兼容旧接口）
             const records: LicensePlate[] = [];
-            for (const group of groups) {
+            for (const group of scopedGroups) {
                 for (const record of group.records) {
                     records.push({
                         id: record.id,
@@ -94,6 +97,7 @@ export const savePlate = async (req: Request, res: Response) => {
             timestamp: plateData.timestamp || Date.now(),
             cameraId: plateData.cameraId,
             cameraName: plateData.cameraName || plateData.location,
+            regionCode: (plateData as any).regionCode,
             location: plateData.location,
             imageUrl: plateData.imageUrl,
             rect: plateData.rect,
@@ -145,6 +149,7 @@ export const recognizePlate = async (req: Request, res: Response) => {
         const cameraId = req.body.cameraId as string | undefined;
         const cameraName = req.body.cameraName as string | undefined;
         const location = req.body.location as string | undefined;
+        const regionCode = req.body.regionCode as string | undefined;
 
         // Call Python AI Service
         try {
@@ -182,6 +187,7 @@ export const recognizePlate = async (req: Request, res: Response) => {
                 rect: p.rect,
                 saved: false,
                 location: location || cameraName || '未知位置',
+                regionCode,
                 imageUrl: `uploads/temp/${file.filename}`,
                 cameraId: cameraId,
                 cameraName: cameraName || '未知摄像头'

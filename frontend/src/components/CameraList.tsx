@@ -6,7 +6,11 @@ import { apiClient } from '../api/client';
 import { useToastContext } from '../contexts/ToastContext';
 import { useConfirmContext } from '../contexts/ConfirmContext';
 
-export const CameraList: React.FC = () => {
+interface CameraListProps {
+    canManage?: boolean;
+}
+
+export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
     const { cameras, selectedCameraId, selectCamera, addCamera, updateCamera, removeCamera, refreshDevices, availableDevices } = useCameraStore();
     const toast = useToastContext();
     const { confirm } = useConfirmContext();
@@ -17,12 +21,14 @@ export const CameraList: React.FC = () => {
         name: '', 
         url: '' as string, 
         type: 'stream' as const,
+        regionCode: '',
         location: undefined as { address: string; lng: number; lat: number } | undefined
     });
     const [editCam, setEditCam] = useState({ 
         name: '', 
         url: '' as string, 
         type: 'stream' as const,
+        regionCode: '',
         location: undefined as { address: string; lng: number; lat: number } | undefined
     });
     const [showLocationPicker, setShowLocationPicker] = useState(false);
@@ -51,6 +57,7 @@ export const CameraList: React.FC = () => {
                 name: newCam.name,
                 type: addType,
                 url: newCam.url,
+                regionCode: newCam.regionCode || undefined,
                 location: newCam.location?.address,
                 latitude: newCam.location?.lat,
                 longitude: newCam.location?.lng
@@ -60,7 +67,7 @@ export const CameraList: React.FC = () => {
             addCamera(savedCamera);
 
             setIsAdding(false);
-            setNewCam({ name: '', url: '', type: 'stream', location: undefined });
+            setNewCam({ name: '', url: '', type: 'stream', regionCode: '', location: undefined });
             setAddType('stream');
             toast.success('摄像头添加成功');
         } catch (error) {
@@ -87,6 +94,7 @@ export const CameraList: React.FC = () => {
             name: camera.name,
             url: camera.url || '',
             type: camera.type === 'local' ? 'stream' : camera.type,
+            regionCode: camera.regionCode || '',
             location: camera.latitude && camera.longitude ? {
                 address: camera.location || '',
                 lat: camera.latitude,
@@ -118,6 +126,7 @@ export const CameraList: React.FC = () => {
                 name: editCam.name,
                 type: addType,
                 url: editCam.url,
+                regionCode: editCam.regionCode || undefined,
                 location: editCam.location?.address,
                 latitude: editCam.location?.lat,
                 longitude: editCam.location?.lng
@@ -128,13 +137,14 @@ export const CameraList: React.FC = () => {
                 name: editCam.name,
                 type: addType,
                 url: editCam.url,
+                regionCode: editCam.regionCode || undefined,
                 location: editCam.location?.address,
                 latitude: editCam.location?.lat,
                 longitude: editCam.location?.lng
             });
 
             setEditingCamera(null);
-            setEditCam({ name: '', url: '', type: 'stream', location: undefined });
+            setEditCam({ name: '', url: '', type: 'stream', regionCode: '', location: undefined });
             setAddType('stream');
             toast.success('摄像头更新成功');
         } catch (error) {
@@ -158,13 +168,15 @@ export const CameraList: React.FC = () => {
                     >
                         <RefreshCw size={18} />
                     </button>
-                    <button
-                        onClick={() => setIsAdding(true)}
-                        className="p-1.5 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors"
-                        title="添加摄像头"
-                    >
-                        <Plus size={18} />
-                    </button>
+                    {canManage && (
+                        <button
+                            onClick={() => setIsAdding(true)}
+                            className="p-1.5 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors"
+                            title="添加摄像头"
+                        >
+                            <Plus size={18} />
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -210,7 +222,7 @@ export const CameraList: React.FC = () => {
                             </div>
 
                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0">
-                                {cam.type !== 'local' && (
+                                {canManage && cam.type !== 'local' && (
                                     <>
                                         <button
                                             onClick={(e) => { 
@@ -323,6 +335,15 @@ export const CameraList: React.FC = () => {
                                     )}
                                 </div>
                             )}
+                            <div>
+                                <label className="text-xs text-gray-500 block mb-1">区域编码（可选）</label>
+                                <input
+                                    className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500"
+                                    placeholder="例如：zone-east"
+                                    value={newCam.regionCode}
+                                    onChange={e => setNewCam({ ...newCam, regionCode: e.target.value })}
+                                />
+                            </div>
                             {/* 位置选择 */}
                             <div>
                                 <label className="text-xs text-gray-500 block mb-1">位置</label>
@@ -359,7 +380,7 @@ export const CameraList: React.FC = () => {
                                 <button
                                     onClick={() => {
                                         setIsAdding(false);
-                                        setNewCam({ name: '', url: '', type: 'stream', location: undefined });
+                                        setNewCam({ name: '', url: '', type: 'stream', regionCode: '', location: undefined });
                                         setAddType('stream');
                                     }}
                                     className="flex-1 px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200"
@@ -444,6 +465,15 @@ export const CameraList: React.FC = () => {
                                     )}
                                 </div>
                             )}
+                            <div>
+                                <label className="text-xs text-gray-500 block mb-1">区域编码（可选）</label>
+                                <input
+                                    className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500"
+                                    placeholder="例如：zone-east"
+                                    value={editCam.regionCode}
+                                    onChange={e => setEditCam({ ...editCam, regionCode: e.target.value })}
+                                />
+                            </div>
                             {/* 位置选择 */}
                             <div>
                                 <label className="text-xs text-gray-500 block mb-1">位置</label>
@@ -480,7 +510,7 @@ export const CameraList: React.FC = () => {
                                 <button
                                     onClick={() => {
                                         setEditingCamera(null);
-                                        setEditCam({ name: '', url: '', type: 'stream', location: undefined });
+                                        setEditCam({ name: '', url: '', type: 'stream', regionCode: '', location: undefined });
                                         setAddType('stream');
                                     }}
                                     className="flex-1 px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200"

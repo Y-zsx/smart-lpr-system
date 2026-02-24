@@ -1,10 +1,13 @@
 import { Request, Response } from 'express';
 import { getCamerasFromDb, saveCameraToDb, deleteCameraFromDb, Camera } from '../utils/db';
+import { AuthenticatedRequest } from '../middlewares/auth';
+import { filterItemsByScope } from '../utils/dataScope';
 
-export const getCameras = async (req: Request, res: Response) => {
+export const getCameras = async (req: AuthenticatedRequest, res: Response) => {
     try {
         const cameras = await getCamerasFromDb();
-        res.json(cameras);
+        const scoped = filterItemsByScope(cameras, c => c.id, c => c.regionCode, req.dataScope);
+        res.json(scoped);
     } catch (error) {
         console.error('Error fetching cameras:', error);
         res.status(500).json({ message: 'Error fetching cameras' });

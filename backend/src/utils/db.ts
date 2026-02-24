@@ -223,10 +223,13 @@ export const getAlarms = async (): Promise<Alarm[]> => {
     return rows.map((row: RowDataPacket) => ({
       id: row.id,
       plate_id: row.plate_id || undefined,
+      record_id: row.record_id || undefined,
       blacklist_id: row.blacklist_id || undefined,
       timestamp: parseInt(row.timestamp),
       is_read: row.is_read,
       plate_number: row.plate_number,
+      camera_id: row.camera_id || undefined,
+      region_code: row.region_code || undefined,
       image_path: row.image_path || undefined,
       location: row.location || undefined,
       latitude: row.latitude ? parseFloat(row.latitude) : undefined,
@@ -244,10 +247,13 @@ export const getAlarms = async (): Promise<Alarm[]> => {
       return rows.map((row: RowDataPacket) => ({
         id: row.id,
         plate_id: row.plate_id || undefined,
+        record_id: row.record_id || undefined,
         blacklist_id: row.blacklist_id || undefined,
         timestamp: parseInt(row.timestamp),
         is_read: row.is_read,
         plate_number: row.plate_number,
+        camera_id: row.camera_id || undefined,
+        region_code: row.region_code || undefined,
         image_path: row.image_path || undefined,
         location: row.location || undefined,
         latitude: row.latitude ? parseFloat(row.latitude) : undefined,
@@ -422,6 +428,7 @@ export interface Camera {
   url?: string;
   deviceId?: string;
   location?: string; // 地址文本
+  regionCode?: string;
   latitude?: number; // 纬度
   longitude?: number; // 经度
   status: 'online' | 'offline';
@@ -444,6 +451,7 @@ export const getCamerasFromDb = async (): Promise<Camera[]> => {
         url: row.url || undefined,
         deviceId: row.device_id || undefined,
         location: row.location || undefined,
+        regionCode: row.region_code || undefined,
         latitude: row.latitude ? parseFloat(row.latitude) : undefined,
         longitude: row.longitude ? parseFloat(row.longitude) : undefined,
         status: row.status,
@@ -473,6 +481,7 @@ export const saveCameraToDb = async (camera: Camera): Promise<Camera> => {
         \`url\` TEXT,
         \`device_id\` VARCHAR(255),
         \`location\` VARCHAR(500),
+        \`region_code\` VARCHAR(100),
         \`latitude\` DECIMAL(10, 8),
         \`longitude\` DECIMAL(11, 8),
         \`status\` ENUM('online', 'offline') DEFAULT 'offline',
@@ -493,17 +502,23 @@ export const saveCameraToDb = async (camera: Camera): Promise<Camera> => {
       // 字段已存在，忽略错误
       if (e.code !== 'ER_DUP_FIELDNAME') throw e;
     }
+    try {
+      await connection.execute(`ALTER TABLE \`cameras\` ADD COLUMN \`region_code\` VARCHAR(100) AFTER \`location\``);
+    } catch (e: any) {
+      if (e.code !== 'ER_DUP_FIELDNAME') throw e;
+    }
 
     const query = `
       INSERT INTO \`cameras\` (
-        \`id\`, \`name\`, \`type\`, \`url\`, \`device_id\`, \`location\`, \`latitude\`, \`longitude\`, \`status\`, \`last_active\`
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        \`id\`, \`name\`, \`type\`, \`url\`, \`device_id\`, \`location\`, \`region_code\`, \`latitude\`, \`longitude\`, \`status\`, \`last_active\`
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         \`name\` = VALUES(\`name\`),
         \`type\` = VALUES(\`type\`),
         \`url\` = VALUES(\`url\`),
         \`device_id\` = VALUES(\`device_id\`),
         \`location\` = VALUES(\`location\`),
+        \`region_code\` = VALUES(\`region_code\`),
         \`latitude\` = VALUES(\`latitude\`),
         \`longitude\` = VALUES(\`longitude\`),
         \`status\` = VALUES(\`status\`),
@@ -517,6 +532,7 @@ export const saveCameraToDb = async (camera: Camera): Promise<Camera> => {
       camera.url || null,
       camera.deviceId || null,
       camera.location || null,
+      camera.regionCode || null,
       camera.latitude || null,
       camera.longitude || null,
       camera.status,
@@ -561,9 +577,9 @@ export const savePlateRecord = async (record: PlateRecord): Promise<PlateRecord>
     const query = `
       INSERT INTO \`plate_records\` (
         \`id\`, \`plate_number\`, \`plate_type\`, \`confidence\`, \`timestamp\`,
-        \`camera_id\`, \`camera_name\`, \`location\`, \`image_url\`,
+        \`camera_id\`, \`camera_name\`, \`region_code\`, \`location\`, \`image_url\`,
         \`rect_x\`, \`rect_y\`, \`rect_w\`, \`rect_h\`, \`created_at\`
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const params = [
@@ -574,6 +590,7 @@ export const savePlateRecord = async (record: PlateRecord): Promise<PlateRecord>
       record.timestamp,
       record.cameraId || null,
       record.cameraName || null,
+      record.regionCode || null,
       record.location || null,
       record.imageUrl || null,
       record.rect?.x || null,
@@ -611,17 +628,21 @@ export const savePlateRecord = async (record: PlateRecord): Promise<PlateRecord>
         // 尝试从摄像头表获取经纬度
         let latitude: number | null = null;
         let longitude: number | null = null;
+        let regionCode: string | null = record.regionCode || null;
         
         if (record.cameraId) {
           try {
             const [cameraRows] = await connection.execute<RowDataPacket[]>(
-              'SELECT `latitude`, `longitude` FROM `cameras` WHERE `id` = ?',
+              'SELECT `latitude`, `longitude`, `region_code` FROM `cameras` WHERE `id` = ?',
               [record.cameraId]
             );
             if (cameraRows.length > 0 && cameraRows[0].latitude && cameraRows[0].longitude) {
               latitude = parseFloat(cameraRows[0].latitude);
               longitude = parseFloat(cameraRows[0].longitude);
               console.log(`从摄像头 ${record.cameraId} 获取到坐标: (${longitude}, ${latitude})`);
+            }
+            if (cameraRows.length > 0 && cameraRows[0].region_code && !regionCode) {
+              regionCode = String(cameraRows[0].region_code);
             }
           } catch (error) {
             console.warn(`无法从摄像头表获取坐标: ${error}`);
@@ -635,8 +656,8 @@ export const savePlateRecord = async (record: PlateRecord): Promise<PlateRecord>
           await connection.execute(
             `INSERT INTO \`alarms\` (
               \`plate_id\`, \`record_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
-              \`plate_number\`, \`image_path\`, \`location\`, \`latitude\`, \`longitude\`, \`reason\`, \`severity\`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              \`plate_number\`, \`camera_id\`, \`region_code\`, \`image_path\`, \`location\`, \`latitude\`, \`longitude\`, \`reason\`, \`severity\`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
               null, // plate_id 设置为 NULL
               record.id, // record_id 关联到 plate_records
@@ -644,6 +665,8 @@ export const savePlateRecord = async (record: PlateRecord): Promise<PlateRecord>
               alarmTimestamp,
               0,
               record.plateNumber,
+              record.cameraId || null,
+              regionCode,
               record.imageUrl || null,
               record.location || null,
               latitude,
@@ -713,16 +736,20 @@ export const createAlarmForBlacklist = async (record: PlateRecord, blacklistItem
     // 尝试从摄像头表获取经纬度
     let latitude: number | null = null;
     let longitude: number | null = null;
+    let regionCode: string | null = record.regionCode || null;
     
     if (record.cameraId) {
       try {
         const [cameraRows] = await connection.execute<RowDataPacket[]>(
-          'SELECT `latitude`, `longitude` FROM `cameras` WHERE `id` = ?',
+          'SELECT `latitude`, `longitude`, `region_code` FROM `cameras` WHERE `id` = ?',
           [record.cameraId]
         );
         if (cameraRows.length > 0 && cameraRows[0].latitude && cameraRows[0].longitude) {
           latitude = parseFloat(cameraRows[0].latitude);
           longitude = parseFloat(cameraRows[0].longitude);
+        }
+        if (cameraRows.length > 0 && cameraRows[0].region_code && !regionCode) {
+          regionCode = String(cameraRows[0].region_code);
         }
       } catch (error) {
         console.warn(`无法从摄像头表获取坐标: ${error}`);
@@ -736,8 +763,8 @@ export const createAlarmForBlacklist = async (record: PlateRecord, blacklistItem
       await connection.execute(
         `INSERT INTO \`alarms\` (
           \`plate_id\`, \`record_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
-          \`plate_number\`, \`image_path\`, \`location\`, \`latitude\`, \`longitude\`, \`reason\`, \`severity\`
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          \`plate_number\`, \`camera_id\`, \`region_code\`, \`image_path\`, \`location\`, \`latitude\`, \`longitude\`, \`reason\`, \`severity\`
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           null, // plate_id 设置为 NULL
           record.id, // record_id 关联到 plate_records
@@ -745,6 +772,8 @@ export const createAlarmForBlacklist = async (record: PlateRecord, blacklistItem
           record.timestamp,
           0,
           record.plateNumber,
+          record.cameraId || null,
+          regionCode,
           record.imageUrl || null,
           record.location || null,
           latitude,
@@ -843,6 +872,7 @@ export const getPlateGroups = async (filters?: {
         timestamp: parseInt(r.timestamp),
         cameraId: r.camera_id || undefined,
         cameraName: r.camera_name || undefined,
+        regionCode: r.region_code || undefined,
         location: r.location || undefined,
         imageUrl: r.image_url || undefined,
         rect: r.rect_x !== null ? {
@@ -921,6 +951,7 @@ export const getAllPlateRecords = async (filters?: {
       timestamp: parseInt(r.timestamp),
       cameraId: r.camera_id || undefined,
       cameraName: r.camera_name || undefined,
+      regionCode: r.region_code || undefined,
       location: r.location || undefined,
       imageUrl: r.image_url || undefined,
       rect: r.rect_x !== null ? {

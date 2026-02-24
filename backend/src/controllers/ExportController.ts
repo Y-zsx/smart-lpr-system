@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
 import { getAllPlateRecords } from '../utils/db';
 import { stringify } from 'csv-stringify';
+import { AuthenticatedRequest } from '../middlewares/auth';
+import { filterItemsByScope } from '../utils/dataScope';
 
-export const exportRecords = async (req: Request, res: Response) => {
+export const exportRecords = async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { start, end, search } = req.query;
         
@@ -11,6 +13,8 @@ export const exportRecords = async (req: Request, res: Response) => {
             start: start ? Number(start) : undefined,
             end: end ? Number(end) : undefined
         });
+
+        records = filterItemsByScope(records, r => r.cameraId, r => r.regionCode, req.dataScope);
 
         // 搜索过滤
         if (search) {

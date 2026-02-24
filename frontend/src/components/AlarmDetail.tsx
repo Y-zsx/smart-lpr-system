@@ -5,6 +5,7 @@ import { apiClient } from '../api/client';
 import { AlarmPathReplay } from './AlarmPathReplay';
 import { useConfirmContext } from '../contexts/ConfirmContext';
 import { useToastContext } from '../contexts/ToastContext';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AlarmDetailProps {
     plateNumber: string;
@@ -18,6 +19,8 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
     const { markAsRead, deleteAlarm, deleteAlarmsByPlate } = useAlarmStore();
     const { confirm } = useConfirmContext();
     const toast = useToastContext();
+    const auth = useAuth();
+    const canManageAlarm = auth.hasPermission('alarm.manage');
 
     // 格式化告警原因，去掉 "Blacklisted: " 前缀
     const formatReason = (reason: string): string => {
@@ -114,13 +117,15 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                             查看路径重现
                         </button>
                     )}
-                    <button
-                        onClick={handleDeleteAll}
-                        className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors ml-auto"
-                    >
-                        <Archive size={18} />
-                        归档所有告警
-                    </button>
+                    {canManageAlarm && (
+                        <button
+                            onClick={handleDeleteAll}
+                            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors ml-auto"
+                        >
+                            <Archive size={18} />
+                            归档所有告警
+                        </button>
+                    )}
                 </div>
 
                 {/* Info Cards */}
@@ -204,7 +209,7 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                                     </div>
                                     
                                     <div className="flex items-center gap-2">
-                                        {alarm.is_read === 0 && (
+                                        {canManageAlarm && alarm.is_read === 0 && (
                                             <button
                                                 onClick={() => handleMarkAsRead(alarm.id)}
                                                 className="p-2 bg-white hover:bg-green-50 text-green-600 rounded-lg border border-gray-200 transition-colors flex-shrink-0"
@@ -227,13 +232,15 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                                             </button>
                                         )}
                                         
-                                        <button
-                                            onClick={() => handleDelete(alarm.id)}
-                                            className="p-2 bg-white hover:bg-gray-100 text-gray-600 rounded-lg border border-gray-200 transition-colors flex-shrink-0"
-                                            title="归档记录"
-                                        >
-                                            <Archive size={18} />
-                                        </button>
+                                        {canManageAlarm && (
+                                            <button
+                                                onClick={() => handleDelete(alarm.id)}
+                                                className="p-2 bg-white hover:bg-gray-100 text-gray-600 rounded-lg border border-gray-200 transition-colors flex-shrink-0"
+                                                title="归档记录"
+                                            >
+                                                <Archive size={18} />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             </div>

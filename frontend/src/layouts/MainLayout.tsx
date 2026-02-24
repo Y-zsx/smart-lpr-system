@@ -1,19 +1,26 @@
 import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { Car, LayoutDashboard, MonitorPlay, FileText, AlertTriangle, Settings, Menu, X } from 'lucide-react';
+import { Car, LayoutDashboard, MonitorPlay, FileText, AlertTriangle, Menu, X } from 'lucide-react';
 import { SystemStatus } from '../components/SystemStatus';
 import { useState } from 'react';
+
+interface NavItem {
+    path: string;
+    label: string;
+    icon: React.ReactNode;
+}
 
 interface MainLayoutProps {
     children: React.ReactNode;
     actions?: React.ReactNode;
+    navItems?: NavItem[];
 }
 
-export const MainLayout: React.FC<MainLayoutProps> = ({ children, actions }) => {
+export const MainLayout: React.FC<MainLayoutProps> = ({ children, actions, navItems: externalNavItems }) => {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const location = useLocation();
 
-    const navItems = [
+    const navItems: NavItem[] = externalNavItems || [
         { path: '/monitor', label: '实时监控', icon: <MonitorPlay size={20} /> },
         { path: '/', label: '仪表盘', icon: <LayoutDashboard size={20} /> },
         { path: '/records', label: '识别记录', icon: <FileText size={20} /> },

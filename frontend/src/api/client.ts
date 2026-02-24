@@ -1,274 +1,266 @@
 const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const TOKEN_KEY = 'smart_lpr_token';
 
-// 获取带认证信息的请求头辅助函数
+type ApiErrorPayload = {
+    success?: boolean;
+    code?: string;
+    message?: string;
+    details?: unknown;
+};
+
+export type AuthRole = 'admin' | 'viewer' | 'operator';
+
+export interface AuthUser {
+    id: string;
+    username: string;
+    role: AuthRole;
+    displayName?: string;
+}
+
+export interface DataScope {
+    all: boolean;
+    cameraIds: string[];
+    regionCodes: string[];
+}
+
+export interface AuthSnapshot {
+    user: AuthUser;
+    roles: string[];
+    permissions: string[];
+    dataScope: DataScope;
+}
+
+function getStoredToken(): string | null {
+    return localStorage.getItem(TOKEN_KEY);
+}
+
+function setStoredToken(token: string) {
+    localStorage.setItem(TOKEN_KEY, token);
+}
+
+function clearStoredToken() {
+    localStorage.removeItem(TOKEN_KEY);
+}
+
+async function buildHeaders(options?: RequestInit): Promise<Record<string, string>> {
+    const headers: Record<string, string> = {
+        'Content-Type': 'application/json'
+    };
+    const token = getStoredToken();
+    if (token) {
+        headers.Authorization = `Bearer ${token}`;
+    }
+    return {
+        ...headers,
+        ...(options?.headers as Record<string, string> | undefined)
+    };
+}
+
+async function request<T = any>(endpoint: string, options?: RequestInit): Promise<T> {
+    const url = endpoint.startsWith('http') ? endpoint : `${BACKEND_URL}${endpoint}`;
+
+    const res = await fetch(url, {
+        ...options,
+        headers: await buildHeaders(options)
+    });
+
+    if (!res.ok) {
+        let payload: ApiErrorPayload | null = null;
+        try {
+            payload = await res.json();
+        } catch (_err) {
+            payload = null;
+        }
+        const message = payload?.message || `请求失败 (${res.status})`;
+        throw new Error(message);
+    }
+
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+        return res.json();
+    }
+    return (res.blob() as unknown) as T;
+}
+
+// 获取带认证信息的请求头辅助函数（兼容旧调用）
 export const getHeaders = () => {
     const headers: Record<string, string> = {
         'Content-Type': 'application/json'
     };
-
-    // 1. 尝试平台注入 (iframe)
-    // 注意：在本地开发环境中，这些可能不存在
-
-    // 2. 尝试本地开发环境变量
-    const localUserId = import.meta.env.VITE_USER_ID;
-    if (localUserId) {
-        headers['X-Encrypted-Yw-ID'] = localUserId;
-        headers['X-Is-Login'] = '1';
+    const token = getStoredToken();
+    if (token) {
+        headers.Authorization = `Bearer ${token}`;
     }
-
     return headers;
 };
 
 export const apiClient = {
-    async getUserInfo() {
-        const res = await fetch(`${BACKEND_URL}/__user_info__`, {
-            headers: getHeaders()
+    async login(username: string, password: string) {
+        const payload = await request<{ success: boolean; data: { token: string } & AuthSnapshot }>('/api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ username, password })
         });
-        return res.json();
+        if (payload?.data?.token) {
+            setStoredToken(payload.data.token);
+        }
+        return payload;
+    },
+
+    logout() {
+        clearStoredToken();
+    },
+
+    async getUserInfo() {
+        const payload = await request<{ success: boolean; data: AuthSnapshot }>('/api/auth/me', {
+            method: 'GET'
+        });
+        return payload.data;
     },
 
     async getHistory(start?: number, end?: number, type?: string, groupBy?: string) {
-        let url = `${BACKEND_URL}/api/plates`;
+        let url = '/api/plates';
         const params = new URLSearchParams();
-
         if (start && end) {
             params.append('start', start.toString());
             params.append('end', end.toString());
         }
-
-        if (type) {
-            params.append('type', type);
-        }
-
-        if (groupBy) {
-            params.append('groupBy', groupBy);
-        }
-
+        if (type) params.append('type', type);
+        if (groupBy) params.append('groupBy', groupBy);
         const queryString = params.toString();
-        if (queryString) {
-            url += `?${queryString}`;
-        }
-
-        const res = await fetch(url, {
-            headers: getHeaders()
-        });
-        if (!res.ok) throw new Error('Failed to fetch history');
-        return res.json();
+        if (queryString) url += `?${queryString}`;
+        return request(url);
     },
 
     async savePlate(plate: any) {
-        const res = await fetch(`${BACKEND_URL}/api/plates`, {
+        return request('/api/plates', {
             method: 'POST',
-            headers: getHeaders(),
             body: JSON.stringify(plate)
         });
-        if (!res.ok) throw new Error('Failed to save plate');
-        return res.json();
     },
 
     async deletePlate(id: string) {
-        const res = await fetch(`${BACKEND_URL}/api/plates?id=${encodeURIComponent(id)}`, {
-            method: 'DELETE',
-            headers: getHeaders()
-        });
-        if (!res.ok) throw new Error('Failed to delete plate');
-        return res.json();
+        return request(`/api/plates?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
     },
 
     async deletePlatesByNumber(plateNumber: string) {
-        const res = await fetch(`${BACKEND_URL}/api/plates/by-number?plateNumber=${encodeURIComponent(plateNumber)}`, {
-            method: 'DELETE',
-            headers: getHeaders()
-        });
-        if (!res.ok) throw new Error('Failed to delete plates');
-        return res.json();
+        return request(`/api/plates/by-number?plateNumber=${encodeURIComponent(plateNumber)}`, { method: 'DELETE' });
     },
 
     async getUploadUrl(filename: string) {
-        const res = await fetch(`${BACKEND_URL}/api/upload-url`, {
+        return request<{ upload_url: string; requiredHeaders: Record<string, string>; key: string }>('/api/upload-url', {
             method: 'POST',
-            headers: getHeaders(),
             body: JSON.stringify({ filename })
         });
-        if (!res.ok) throw new Error('Failed to get upload URL');
-        return res.json();
     },
 
     async uploadFile(file: File) {
         const { upload_url, requiredHeaders, key } = await this.getUploadUrl(file.name);
-
         await fetch(upload_url, {
             method: 'PUT',
             headers: requiredHeaders,
             body: file
         });
-
         return key;
     },
 
     async getDailyStats(endDate?: number) {
-        let url = `${BACKEND_URL}/api/stats/daily`;
-        if (endDate) {
-            url += `?end=${endDate}`;
-        }
-        const res = await fetch(url, {
-            headers: getHeaders()
-        });
-        if (!res.ok) throw new Error('Failed to fetch stats');
-        return res.json();
+        const url = endDate ? `/api/stats/daily?end=${endDate}` : '/api/stats/daily';
+        return request(url);
     },
 
     async getDashboardStats(date?: number): Promise<any> {
-        let url = `${BACKEND_URL}/api/stats/dashboard`;
-        if (date) {
-            url += `?date=${date}`;
-        }
-        const res = await fetch(url, {
-            headers: getHeaders()
-        });
-        if (!res.ok) throw new Error('Failed to fetch dashboard stats');
-        return res.json();
+        const url = date ? `/api/stats/dashboard?date=${date}` : '/api/stats/dashboard';
+        return request(url);
     },
 
     async getRegionStats(range: 'daily' | 'total' = 'total', date?: number) {
-        let url = `${BACKEND_URL}/api/stats/region?range=${range}`;
-        if (date) {
-            url += `&date=${date}`;
-        }
-        const res = await fetch(url, {
-            headers: getHeaders()
-        });
-        if (!res.ok) throw new Error('Failed to fetch region stats');
-        return res.json();
+        const url = date ? `/api/stats/region?range=${range}&date=${date}` : `/api/stats/region?range=${range}`;
+        return request(url);
     },
 
     async exportRecords(start?: number, end?: number, search?: string) {
-        let url = `${BACKEND_URL}/api/export-records`;
+        let url = '/api/export-records';
         const params = new URLSearchParams();
-
         if (start && end) {
             params.append('start', start.toString());
             params.append('end', end.toString());
         }
-
-        if (search) {
-            params.append('search', search);
-        }
-
+        if (search) params.append('search', search);
         const queryString = params.toString();
-        if (queryString) {
-            url += `?${queryString}`;
-        }
-
-        const res = await fetch(url, {
-            headers: getHeaders()
-        });
-
-        if (!res.ok) throw new Error('Failed to export records');
-        return res.blob();
+        if (queryString) url += `?${queryString}`;
+        return request<Blob>(url);
     },
 
     async getBlacklist() {
-        const res = await fetch(`${BACKEND_URL}/api/blacklist`, { headers: getHeaders() });
-        if (!res.ok) throw new Error('Failed to fetch blacklist');
-        return res.json();
+        return request('/api/blacklist');
     },
 
     async addBlacklist(data: any | any[]) {
-        const res = await fetch(`${BACKEND_URL}/api/blacklist`, {
+        return request('/api/blacklist', {
             method: 'POST',
-            headers: getHeaders(),
             body: JSON.stringify(data)
         });
-        if (!res.ok) throw new Error('Failed to add blacklist');
-        return res.json();
     },
 
     async deleteBlacklist(id: number) {
-        const res = await fetch(`${BACKEND_URL}/api/blacklist?id=${id}`, {
-            method: 'DELETE',
-            headers: getHeaders()
+        return request(`/api/blacklist?id=${id}`, {
+            method: 'DELETE'
         });
-        if (!res.ok) throw new Error('Failed to delete blacklist');
-        return res.json();
     },
 
     async getAlarms() {
-        const res = await fetch(`${BACKEND_URL}/api/alarms`, { headers: getHeaders() });
-        if (!res.ok) throw new Error('Failed to fetch alarms');
-        return res.json();
+        return request('/api/alarms');
     },
 
     async markAlarmAsRead(id: number) {
-        const res = await fetch(`${BACKEND_URL}/api/alarms/${id}/read`, {
-            method: 'PUT',
-            headers: getHeaders()
+        return request(`/api/alarms/${id}/read`, {
+            method: 'PUT'
         });
-        if (!res.ok) throw new Error('Failed to mark alarm as read');
-        return res.json();
     },
 
     async deleteAlarm(id: number) {
-        const res = await fetch(`${BACKEND_URL}/api/alarms/${id}`, {
-            method: 'DELETE',
-            headers: getHeaders()
+        return request(`/api/alarms/${id}`, {
+            method: 'DELETE'
         });
-        if (!res.ok) throw new Error('Failed to delete alarm');
-        return res.json();
     },
 
     async deleteAlarmsByPlate(plateNumber: string) {
-        const res = await fetch(`${BACKEND_URL}/api/alarms/plate/${encodeURIComponent(plateNumber)}`, {
-            method: 'DELETE',
-            headers: getHeaders()
+        return request(`/api/alarms/plate/${encodeURIComponent(plateNumber)}`, {
+            method: 'DELETE'
         });
-        if (!res.ok) throw new Error('Failed to delete alarms');
-        return res.json();
     },
 
     async getCameras() {
-        const res = await fetch(`${BACKEND_URL}/api/cameras`, { headers: getHeaders() });
-        if (!res.ok) throw new Error('Failed to fetch cameras');
-        return res.json();
+        return request('/api/cameras');
     },
 
     async addCamera(data: any) {
-        const res = await fetch(`${BACKEND_URL}/api/cameras`, {
+        return request('/api/cameras', {
             method: 'POST',
-            headers: getHeaders(),
             body: JSON.stringify(data)
         });
-        if (!res.ok) throw new Error('Failed to add camera');
-        return res.json();
     },
 
     async updateCamera(id: string, data: any) {
-        const res = await fetch(`${BACKEND_URL}/api/cameras/${encodeURIComponent(id)}`, {
+        return request(`/api/cameras/${encodeURIComponent(id)}`, {
             method: 'PUT',
-            headers: getHeaders(),
             body: JSON.stringify(data)
         });
-        if (!res.ok) throw new Error('Failed to update camera');
-        return res.json();
     },
 
     async deleteCamera(id: string) {
-        const res = await fetch(`${BACKEND_URL}/api/cameras?id=${encodeURIComponent(id)}`, {
-            method: 'DELETE',
-            headers: getHeaders()
+        return request(`/api/cameras?id=${encodeURIComponent(id)}`, {
+            method: 'DELETE'
         });
-        if (!res.ok) throw new Error('Failed to delete camera');
-        return res.json();
     },
 
-    // 添加通用的 fetch 方法供其他服务使用
     async fetch(endpoint: string, options?: RequestInit) {
         const url = endpoint.startsWith('http') ? endpoint : `${BACKEND_URL}${endpoint}`;
         return fetch(url, {
             ...options,
             headers: {
-                ...getHeaders(),
-                ...options?.headers
+                ...(await buildHeaders(options)),
+                ...(options?.headers as Record<string, string> | undefined)
             }
         });
     },
@@ -277,23 +269,52 @@ export const apiClient = {
         return BACKEND_URL;
     },
 
-    /**
-     * 构建完整的图片URL
-     * @param path 图片路径（可能是相对路径或完整URL）
-     * @returns 完整的图片URL
-     */
+    getToken() {
+        return getStoredToken();
+    },
+
     getImageUrl(path?: string): string {
         if (!path) return 'https://via.placeholder.com/400x300?text=No+Image';
         if (path.startsWith('http://') || path.startsWith('https://')) return path;
-        // 如果是相对路径（uploads/开头），构建完整URL
         if (path.startsWith('uploads/')) {
             return `${BACKEND_URL}/${path}`;
         }
-        // 如果是 base64 或 blob url，直接返回
         if (path.startsWith('data:') || path.startsWith('blob:')) {
             return path;
         }
-        // 其他情况，尝试构建完整URL
         return `${BACKEND_URL}/${path}`;
+    },
+
+    async getIamUsers() {
+        return request<Array<{ id: string; username: string; displayName: string; status: string; roles: string[] }>>('/api/iam/users');
+    },
+
+    async getIamRoles() {
+        return request<Array<{ id: string; roleKey: string; roleName: string; description?: string; permissions: string[]; dataScope: DataScope }>>('/api/iam/roles');
+    },
+
+    async getIamPermissions() {
+        return request<Array<{ id: string; key: string; name: string; group: string }>>('/api/iam/permissions');
+    },
+
+    async setUserRoles(userId: string, roleKeys: string[]) {
+        return request('/api/iam/users/' + encodeURIComponent(userId) + '/roles', {
+            method: 'PUT',
+            body: JSON.stringify({ roleKeys })
+        });
+    },
+
+    async setRolePermissions(roleKey: string, permissionKeys: string[]) {
+        return request('/api/iam/roles/' + encodeURIComponent(roleKey) + '/permissions', {
+            method: 'PUT',
+            body: JSON.stringify({ permissionKeys })
+        });
+    },
+
+    async setRoleDataScope(roleKey: string, dataScope: DataScope) {
+        return request('/api/iam/roles/' + encodeURIComponent(roleKey) + '/data-scope', {
+            method: 'PUT',
+            body: JSON.stringify(dataScope)
+        });
     }
 };

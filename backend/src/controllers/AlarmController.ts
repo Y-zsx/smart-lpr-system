@@ -1,10 +1,18 @@
 import { Request, Response } from 'express';
 import { getAlarms as getAlarmsFromDb, updateAlarmStatus, deleteAlarm as deleteAlarmFromDb, deleteAlarmsByPlateNumber } from '../utils/db';
+import { AuthenticatedRequest } from '../middlewares/auth';
+import { filterItemsByScope } from '../utils/dataScope';
 
-export const getAlarms = async (req: Request, res: Response) => {
+export const getAlarms = async (req: AuthenticatedRequest, res: Response) => {
     try {
         const alarms = await getAlarmsFromDb();
-        res.json(alarms);
+        const scoped = filterItemsByScope(
+            alarms,
+            alarm => (alarm as any).camera_id,
+            alarm => (alarm as any).region_code,
+            req.dataScope
+        );
+        res.json(scoped);
     } catch (error) {
         console.error('Error fetching alarms:', error);
         res.status(500).json({ message: 'Error fetching alarms' });
