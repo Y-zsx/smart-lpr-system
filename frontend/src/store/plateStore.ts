@@ -26,13 +26,14 @@ export const usePlateStore = create<PlateStore>((set, get) => ({
     plates: [],
     stats: { total: 0, blue: 0, green: 0, yellow: 0, other: 0 },
     isScanning: false,
+    // 默认配置：面向大多数场景的平均适用值，可在设置中按需调整
     settings: {
-        confidenceThreshold: 0.7,
-        scanInterval: 2000,
-        plateCooldownSeconds: 30,
-        retryOnEmpty: true,
+        confidenceThreshold: 0.7,       // 70%：兼顾识别率与误检，低于不展示
+        scanInterval: 2000,             // 2 秒：标准抓拍频率，平衡 CPU 与响应
+        plateCooldownSeconds: 30,       // 30 秒：同车防重复，适合出入口/停车场
+        retryOnEmpty: true,             // 漏检补拍：有运动无车牌时约 0.25s 再拍一次
         enableHaptics: true,
-        isDemoMode: false,
+        isDemoMode: false,              // 演示模式默认关闭
     },
     setPlates: (plates) => set((state) => {
         // 检查数据是否真的变化了

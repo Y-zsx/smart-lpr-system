@@ -5,6 +5,7 @@ import { usePlateStore } from '../store/plateStore';
 import { LicensePlate } from '../types/plate';
 import { apiClient } from '../api/client';
 import { useToastContext } from '../contexts/ToastContext';
+import { isValidChinesePlateNumber } from '../utils/plateValidation';
 
 interface FileItem {
     id: string;
@@ -88,8 +89,9 @@ export const FileUpload: React.FC = () => {
                     continue;
                 }
 
+                const validPlates = plates.filter(p => p?.number && isValidChinesePlateNumber(p.number));
                 const toShow: LicensePlate[] = [];
-                for (const p of plates) {
+                for (const p of validPlates) {
                     try {
                         const saved = await apiClient.savePlate({ ...p, saved: true });
                         addPlate(saved);
@@ -99,6 +101,12 @@ export const FileUpload: React.FC = () => {
                         addPlate(p);
                         toShow.push(p);
                     }
+                }
+                if (validPlates.length === 0 && plates.length > 0) {
+                    setFiles(prev => prev.map(f => f.id === item.id ? {
+                        ...f, status: 'error', error: '识别结果均为非法车牌格式，未入库'
+                    } : f));
+                    continue;
                 }
                 setFiles(prev => prev.map(f => f.id === item.id ? {
                     ...f, status: 'success', results: toShow

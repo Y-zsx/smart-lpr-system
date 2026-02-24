@@ -7,6 +7,7 @@ import FormData from 'form-data';
 import fs from 'fs-extra';
 import { AuthenticatedRequest } from '../middlewares/auth';
 import { filterPlateGroupsByScope } from '../utils/dataScope';
+import { isValidChinesePlateNumber } from '../utils/plateValidation';
 
 export const getPlates = async (req: AuthenticatedRequest, res: Response) => {
     try {
@@ -80,6 +81,18 @@ export const getPlates = async (req: AuthenticatedRequest, res: Response) => {
 export const savePlate = async (req: Request, res: Response) => {
     try {
         const plateData: LicensePlate = req.body;
+
+        if (!plateData?.number?.trim()) {
+            res.status(400).json({ message: '车牌号不能为空' });
+            return;
+        }
+        if (!isValidChinesePlateNumber(plateData.number)) {
+            res.status(400).json({
+                message: '车牌号格式不合法，仅支持中国车牌格式（如京A·12345），非法结果将不入库',
+                plateNumber: plateData.number
+            });
+            return;
+        }
 
         console.log('收到保存请求:', {
             plateNumber: plateData.number,

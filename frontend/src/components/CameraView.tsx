@@ -6,6 +6,7 @@ import { plateService } from '../services/plateService';
 import { apiClient } from '../api/client';
 import { Rect, LicensePlate } from '../types/plate';
 import { hapticFeedback } from '../utils/mobileFeatures';
+import { isValidChinesePlateNumber } from '../utils/plateValidation';
 
 interface RecentRecognition {
     plates: LicensePlate[];
@@ -379,7 +380,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                     );
 
                     const valid = (plates || []).filter(
-                        p => p && p.confidence >= settings.confidenceThreshold
+                        p => p && p.confidence >= settings.confidenceThreshold && isValidChinesePlateNumber(p.number)
                     );
 
                     // 有运动但未识别到车牌：短时补拍一次，减轻漏检
