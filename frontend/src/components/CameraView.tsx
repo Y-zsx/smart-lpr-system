@@ -27,6 +27,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     const [detectedRect, setDetectedRect] = useState<Rect | null>(null);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
     const [recentRecognition, setRecentRecognition] = useState<RecentRecognition | null>(null);
+    const [inputResolutionLabel, setInputResolutionLabel] = useState<string>('未知');
     const [blacklist, setBlacklist] = useState<Set<string>>(new Set());
     const mjpegRefreshIntervalRef = useRef<number | null>(null);
     const healthCheckIntervalRef = useRef<number | null>(null);
@@ -53,6 +54,8 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     const recentlySeenPlatesRef = useRef<Map<string, number>>(new Map());
     const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const retryScheduledRef = useRef<boolean>(false);
+    const MIN_CAPTURE_SHORT_EDGE = 540;
+    const JPEG_CAPTURE_QUALITY = 0.95;
 
     // 加载黑名单
     useEffect(() => {
@@ -204,8 +207,18 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         try {
             const constraints: MediaStreamConstraints = {
                 video: currentCamera.deviceId 
-                    ? { deviceId: { exact: currentCamera.deviceId } }
-                    : { facingMode: 'environment' }
+                    ? {
+                        deviceId: { exact: currentCamera.deviceId },
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        frameRate: { ideal: 24, max: 30 }
+                    }
+                    : {
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        frameRate: { ideal: 24, max: 30 }
+                    }
             };
 
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -314,14 +327,32 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         const context = canvas.getContext('2d', { willReadFrequently: true });
         if (!context) return;
 
-        const width = (isLocal || isFile) 
+        const sourceWidth = (isLocal || isFile) 
             ? (sourceElement as HTMLVideoElement).videoWidth 
             : (sourceElement as HTMLImageElement).naturalWidth;
-        const height = (isLocal || isFile) 
+        const sourceHeight = (isLocal || isFile) 
             ? (sourceElement as HTMLVideoElement).videoHeight 
             : (sourceElement as HTMLImageElement).naturalHeight;
 
-        if (!width || !height || width === 0 || height === 0) return;
+        if (!sourceWidth || !sourceHeight || sourceWidth === 0 || sourceHeight === 0) {
+            setInputResolutionLabel('未知');
+            return;
+        }
+
+        // 对低分辨率源做温和上采样，至少保证短边达到 540，提升远距离小车牌可识别性
+        let width = sourceWidth;
+        let height = sourceHeight;
+        const shortEdge = Math.min(sourceWidth, sourceHeight);
+        if (shortEdge < MIN_CAPTURE_SHORT_EDGE) {
+            const scale = MIN_CAPTURE_SHORT_EDGE / shortEdge;
+            width = Math.round(sourceWidth * scale);
+            height = Math.round(sourceHeight * scale);
+        }
+        setInputResolutionLabel(
+            width === sourceWidth && height === sourceHeight
+                ? `${sourceWidth}x${sourceHeight}`
+                : `${sourceWidth}x${sourceHeight} -> ${width}x${height}`
+        );
 
         if (canvas.width !== width || canvas.height !== height) {
             canvas.width = width;
@@ -329,6 +360,8 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         }
 
         try {
+            context.imageSmoothingEnabled = true;
+            context.imageSmoothingQuality = 'high';
             context.drawImage(sourceElement, 0, 0, width, height);
 
             if (!hasMotion(context, width, height)) {
@@ -422,7 +455,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                 } catch (e) {
                     // 忽略
                 }
-            }, 'image/jpeg', 0.8);
+            }, 'image/jpeg', JPEG_CAPTURE_QUALITY);
         } catch (e) {
             console.warn("Canvas security error", e);
         }
@@ -813,6 +846,11 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                             <div className={`w-2.5 h-2.5 rounded-full ${isScanning ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
                             <span className="text-white text-xs font-medium">
                                 {isScanning ? '智能检测中...' : '已暂停'}
+                            </span>
+                        </div>
+                        <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-md z-20">
+                            <span className="text-white/90 text-xs font-medium">
+                                输入分辨率: {inputResolutionLabel}
                             </span>
                         </div>
                     </div>
