@@ -1,8 +1,16 @@
 import React from 'react';
-import { PlateGroup } from '../types/plate';
+import { PlateGroup, type PlateType } from '../types/plate';
 import { Clock, MapPin, Camera, X, Image as ImageIcon, Trash2, Loader, AlertTriangle, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useToastContext } from '../contexts/ToastContext';
+
+const PLATE_TYPE_COLORS: Record<PlateType, { stroke: string; fill: string; text: string }> = {
+    blue: { stroke: '#2563eb', fill: '#2563eb', text: '#ffffff' },
+    green: { stroke: '#16a34a', fill: '#16a34a', text: '#ffffff' },
+    yellow: { stroke: '#ca8a04', fill: '#ca8a04', text: '#ffffff' },
+    white: { stroke: '#64748b', fill: '#64748b', text: '#ffffff' },
+    black: { stroke: '#1e293b', fill: '#1e293b', text: '#ffffff' },
+};
 
 interface PlateDetailProps {
     group: PlateGroup;
@@ -10,9 +18,86 @@ interface PlateDetailProps {
     onDeleted?: () => void; // 删除后的回调，用于刷新列表
 }
 
+interface AnnotatedPlateImageProps {
+    imageUrl: string;
+    rect?: { x: number; y: number; w: number; h: number };
+    plateNumber: string;
+    plateType?: PlateType;
+    className?: string;
+}
+
+const AnnotatedPlateImage: React.FC<AnnotatedPlateImageProps> = ({ imageUrl, rect, plateNumber, plateType = 'blue', className }) => {
+    const [imageSize, setImageSize] = React.useState<{ w: number; h: number }>({ w: 0, h: 0 });
+    const colors = PLATE_TYPE_COLORS[plateType] ?? PLATE_TYPE_COLORS.blue;
+
+    React.useEffect(() => {
+        const img = new Image();
+        img.onload = () => {
+            setImageSize({
+                w: img.naturalWidth || 1,
+                h: img.naturalHeight || 1
+            });
+        };
+        img.src = imageUrl;
+    }, [imageUrl]);
+
+    if (!imageSize.w || !imageSize.h) {
+        return <div className={`bg-gray-200 animate-pulse ${className || ''}`} />;
+    }
+
+    const safeRect = rect && rect.w > 0 && rect.h > 0 ? rect : null;
+    const labelHeight = Math.max(18, Math.round(imageSize.h * 0.04));
+    const labelY = safeRect ? Math.max(0, safeRect.y - labelHeight - 2) : 0;
+
+    return (
+        <svg
+            viewBox={`0 0 ${imageSize.w} ${imageSize.h}`}
+            className={className}
+            preserveAspectRatio="xMidYMid meet"
+        >
+            <image href={imageUrl} x="0" y="0" width={imageSize.w} height={imageSize.h} />
+            {safeRect && (
+                <>
+                    <rect
+                        x={safeRect.x}
+                        y={safeRect.y}
+                        width={safeRect.w}
+                        height={safeRect.h}
+                        fill="none"
+                        stroke={colors.stroke}
+                        strokeWidth={Math.max(2, Math.round(imageSize.w * 0.003))}
+                    />
+                    <rect
+                        x={safeRect.x}
+                        y={labelY}
+                        width={Math.max(safeRect.w, plateNumber.length * labelHeight * 0.6)}
+                        height={labelHeight}
+                        fill={colors.fill}
+                        opacity="0.95"
+                        rx={Math.max(2, Math.round(labelHeight * 0.2))}
+                    />
+                    <text
+                        x={safeRect.x + 6}
+                        y={labelY + labelHeight * 0.72}
+                        fill={colors.text}
+                        fontSize={Math.max(12, Math.round(labelHeight * 0.6))}
+                        fontWeight="700"
+                    >
+                        {plateNumber}
+                    </text>
+                </>
+            )}
+        </svg>
+    );
+};
+
 export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDeleted }) => {
     const toast = useToastContext();
     const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
+    const [selectedImageRect, setSelectedImageRect] = React.useState<{ x: number; y: number; w: number; h: number } | undefined>(undefined);
+    const [selectedImagePlate, setSelectedImagePlate] = React.useState<string>(group.plateNumber);
+    const [selectedImagePlateType, setSelectedImagePlateType] = React.useState<PlateType>(group.plateType);
+    const [showAnnotatedImage, setShowAnnotatedImage] = React.useState(true);
     const [imageScale, setImageScale] = React.useState(1);
     const [imageOffset, setImageOffset] = React.useState({ x: 0, y: 0 });
     const [isDraggingImage, setIsDraggingImage] = React.useState(false);
@@ -30,8 +115,12 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
 
     const closeImageModal = React.useCallback(() => {
         setSelectedImage(null);
+        setSelectedImageRect(undefined);
+        setSelectedImagePlate(group.plateNumber);
+        setSelectedImagePlateType(group.plateType);
+        setShowAnnotatedImage(true);
         resetImageView();
-    }, [resetImageView]);
+    }, [group.plateNumber, group.plateType, resetImageView]);
 
     const clampScale = (nextScale: number) => Math.min(4, Math.max(1, nextScale));
     const zoomBy = (delta: number) => {
@@ -179,10 +268,36 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                                         {record.imageUrl && (
                                             <button
                                                 onClick={() => {
-                                                    // 使用统一的图片URL构建方法
                                                     const imageUrl = apiClient.getImageUrl(record.imageUrl);
                                                     resetImageView();
                                                     setSelectedImage(imageUrl);
+                                                    setSelectedImageRect(record.rect);
+                                                    setSelectedImagePlate(record.plateNumber);
+                                                    setSelectedImagePlateType(record.plateType);
+                                                    setShowAnnotatedImage(true);
+                                                }}
+                                                className="w-28 h-16 bg-white rounded-lg border border-gray-200 overflow-hidden hover:border-blue-400 transition-colors"
+                                                title="查看带标注图片"
+                                            >
+                                                <AnnotatedPlateImage
+                                                    imageUrl={apiClient.getImageUrl(record.imageUrl)}
+                                                    rect={record.rect}
+                                                    plateNumber={record.plateNumber}
+                                                    plateType={record.plateType}
+                                                    className="w-full h-full object-contain"
+                                                />
+                                            </button>
+                                        )}
+                                        {record.imageUrl && (
+                                            <button
+                                                onClick={() => {
+                                                    const imageUrl = apiClient.getImageUrl(record.imageUrl);
+                                                    resetImageView();
+                                                    setSelectedImage(imageUrl);
+                                                    setSelectedImageRect(record.rect);
+                                                    setSelectedImagePlate(record.plateNumber);
+                                                    setSelectedImagePlateType(record.plateType);
+                                                    setShowAnnotatedImage(true);
                                                 }}
                                                 className="p-2 bg-white hover:bg-blue-50 rounded-lg border border-gray-200 transition-colors"
                                                 title="查看图片"
@@ -217,6 +332,26 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                     >
                         <div className="relative max-w-5xl w-full max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
                             <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-black/55 backdrop-blur-sm rounded-lg p-2">
+                                <div className="mr-2 flex items-center gap-1 rounded-md bg-white/95 p-1">
+                                    <button
+                                        onClick={() => setShowAnnotatedImage(false)}
+                                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                                            !showAnnotatedImage ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'
+                                        }`}
+                                        title="显示原图"
+                                    >
+                                        原图
+                                    </button>
+                                    <button
+                                        onClick={() => setShowAnnotatedImage(true)}
+                                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                                            showAnnotatedImage ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'
+                                        }`}
+                                        title="显示标注图"
+                                    >
+                                        标注图
+                                    </button>
+                                </div>
                                 <button
                                     onClick={() => zoomBy(-0.2)}
                                     disabled={imageScale <= 1}
@@ -267,11 +402,8 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                                 onMouseUp={() => setIsDraggingImage(false)}
                                 onMouseLeave={() => setIsDraggingImage(false)}
                             >
-                                <img
-                                    src={selectedImage}
-                                    alt="车牌识别图片"
-                                    draggable={false}
-                                    className="w-full h-full object-contain rounded-lg transition-transform duration-100"
+                                <div
+                                    className="w-full h-full transition-transform duration-100"
                                     onDoubleClick={() => {
                                         setImageOffset({ x: 0, y: 0 });
                                         setImageScale(prev => (prev <= 1.05 ? 2 : 1));
@@ -280,7 +412,35 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                                         transform: `translate(${imageOffset.x}px, ${imageOffset.y}px) scale(${imageScale})`,
                                         transformOrigin: 'center center',
                                     }}
-                                />
+                                >
+                                    <div className="relative w-full h-full">
+                                        <img
+                                            src={selectedImage}
+                                            alt="车牌识别原图"
+                                            draggable={false}
+                                            className="absolute inset-0 w-full h-full object-contain rounded-lg"
+                                            style={{
+                                                visibility: showAnnotatedImage ? 'hidden' : 'visible',
+                                                pointerEvents: showAnnotatedImage ? 'none' : 'auto'
+                                            }}
+                                        />
+                                        <div
+                                            className="absolute inset-0 w-full h-full"
+                                            style={{
+                                                visibility: showAnnotatedImage ? 'visible' : 'hidden',
+                                                pointerEvents: showAnnotatedImage ? 'auto' : 'none'
+                                            }}
+                                        >
+                                            <AnnotatedPlateImage
+                                                imageUrl={selectedImage}
+                                                rect={selectedImageRect}
+                                                plateNumber={selectedImagePlate}
+                                                plateType={selectedImagePlateType}
+                                                className="w-full h-full object-contain rounded-lg"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <button
                                 onClick={closeImageModal}
