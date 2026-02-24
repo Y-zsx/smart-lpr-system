@@ -1,6 +1,6 @@
 import React from 'react';
 import { PlateGroup } from '../types/plate';
-import { Clock, MapPin, Camera, X, Image as ImageIcon, Trash2, Loader, AlertTriangle } from 'lucide-react';
+import { Clock, MapPin, Camera, X, Image as ImageIcon, Trash2, Loader, AlertTriangle, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useToastContext } from '../contexts/ToastContext';
 
@@ -13,9 +13,30 @@ interface PlateDetailProps {
 export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDeleted }) => {
     const toast = useToastContext();
     const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
+    const [imageScale, setImageScale] = React.useState(1);
+    const [imageOffset, setImageOffset] = React.useState({ x: 0, y: 0 });
+    const [isDraggingImage, setIsDraggingImage] = React.useState(false);
     const [deletingRecordId, setDeletingRecordId] = React.useState<string | null>(null);
     const [showDeleteConfirm, setShowDeleteConfirm] = React.useState<{ type: 'record' | 'all', recordId?: string } | null>(null);
     const [isDeleting, setIsDeleting] = React.useState(false);
+    const dragStartRef = React.useRef({ x: 0, y: 0 });
+    const dragOffsetStartRef = React.useRef({ x: 0, y: 0 });
+
+    const resetImageView = React.useCallback(() => {
+        setImageScale(1);
+        setImageOffset({ x: 0, y: 0 });
+        setIsDraggingImage(false);
+    }, []);
+
+    const closeImageModal = React.useCallback(() => {
+        setSelectedImage(null);
+        resetImageView();
+    }, [resetImageView]);
+
+    const clampScale = (nextScale: number) => Math.min(4, Math.max(1, nextScale));
+    const zoomBy = (delta: number) => {
+        setImageScale(prev => clampScale(prev + delta));
+    };
 
     const handleDeleteRecord = async (recordId: string) => {
         setIsDeleting(true);
@@ -160,6 +181,7 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                                                 onClick={() => {
                                                     // 使用统一的图片URL构建方法
                                                     const imageUrl = apiClient.getImageUrl(record.imageUrl);
+                                                    resetImageView();
                                                     setSelectedImage(imageUrl);
                                                 }}
                                                 className="p-2 bg-white hover:bg-blue-50 rounded-lg border border-gray-200 transition-colors"
@@ -191,17 +213,77 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                 {selectedImage && (
                     <div
                         className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 p-4"
-                        onClick={() => setSelectedImage(null)}
+                        onClick={closeImageModal}
                     >
-                        <div className="relative max-w-4xl max-h-[90vh]">
-                            <img
-                                src={selectedImage}
-                                alt="车牌识别图片"
-                                className="max-w-full max-h-[90vh] object-contain rounded-lg"
-                                onClick={(e) => e.stopPropagation()}
-                            />
+                        <div className="relative max-w-5xl w-full max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+                            <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-black/55 backdrop-blur-sm rounded-lg p-2">
+                                <button
+                                    onClick={() => zoomBy(-0.2)}
+                                    disabled={imageScale <= 1}
+                                    className="p-2 bg-white/95 hover:bg-white rounded-lg transition-colors disabled:opacity-50"
+                                    title="缩小"
+                                >
+                                    <ZoomOut size={18} className="text-gray-800" />
+                                </button>
+                                <button
+                                    onClick={() => zoomBy(0.2)}
+                                    disabled={imageScale >= 4}
+                                    className="p-2 bg-white/95 hover:bg-white rounded-lg transition-colors disabled:opacity-50"
+                                    title="放大"
+                                >
+                                    <ZoomIn size={18} className="text-gray-800" />
+                                </button>
+                                <button
+                                    onClick={resetImageView}
+                                    className="p-2 bg-white/95 hover:bg-white rounded-lg transition-colors"
+                                    title="复位"
+                                >
+                                    <RotateCcw size={18} className="text-gray-800" />
+                                </button>
+                                <span className="text-xs text-white px-2">{Math.round(imageScale * 100)}%</span>
+                            </div>
+
+                            <div
+                                className="w-full h-[80vh] overflow-hidden rounded-lg cursor-grab active:cursor-grabbing select-none"
+                                onWheel={(e) => {
+                                    e.preventDefault();
+                                    zoomBy(e.deltaY > 0 ? -0.1 : 0.1);
+                                }}
+                                onMouseDown={(e) => {
+                                    if (imageScale <= 1) return;
+                                    setIsDraggingImage(true);
+                                    dragStartRef.current = { x: e.clientX, y: e.clientY };
+                                    dragOffsetStartRef.current = imageOffset;
+                                }}
+                                onMouseMove={(e) => {
+                                    if (!isDraggingImage || imageScale <= 1) return;
+                                    const dx = e.clientX - dragStartRef.current.x;
+                                    const dy = e.clientY - dragStartRef.current.y;
+                                    setImageOffset({
+                                        x: dragOffsetStartRef.current.x + dx,
+                                        y: dragOffsetStartRef.current.y + dy,
+                                    });
+                                }}
+                                onMouseUp={() => setIsDraggingImage(false)}
+                                onMouseLeave={() => setIsDraggingImage(false)}
+                            >
+                                <img
+                                    src={selectedImage}
+                                    alt="车牌识别图片"
+                                    draggable={false}
+                                    className="w-full h-full object-contain rounded-lg transition-transform duration-100"
+                                    onDoubleClick={() => {
+                                        setImageOffset({ x: 0, y: 0 });
+                                        setImageScale(prev => (prev <= 1.05 ? 2 : 1));
+                                    }}
+                                    style={{
+                                        transform: `translate(${imageOffset.x}px, ${imageOffset.y}px) scale(${imageScale})`,
+                                        transformOrigin: 'center center',
+                                    }}
+                                />
+                            </div>
                             <button
-                                onClick={() => setSelectedImage(null)}
+                                onClick={closeImageModal}
                                 className="absolute top-4 right-4 p-2 bg-white/90 hover:bg-white rounded-full transition-colors"
                             >
                                 <X size={20} className="text-gray-800" />

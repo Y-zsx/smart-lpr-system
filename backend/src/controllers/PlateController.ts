@@ -155,10 +155,14 @@ export const recognizePlate = async (req: Request, res: Response) => {
         try {
             const formData = new FormData();
             formData.append('file', fs.createReadStream(file.path));
+            const streamKey = cameraId || cameraName || 'default';
 
             const aiResponse = await axios.post('http://localhost:8001/recognize', formData, {
                 headers: {
                     ...formData.getHeaders()
+                },
+                params: {
+                    stream_key: streamKey
                 }
             });
 
