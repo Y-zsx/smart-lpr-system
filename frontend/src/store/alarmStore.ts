@@ -1,15 +1,19 @@
 import { create } from 'zustand';
 import { apiClient } from '../api/client';
 import { areArraysEqual } from '../utils/dataComparison';
+import { type PlateType } from '../types/plate';
 
 export interface Alarm {
     id: number;
     plate_id?: string;
+    record_id?: string;
     blacklist_id?: number;
     timestamp: number;
     is_read: number;
     plate_number: string;
     image_path?: string;
+    plate_type?: PlateType;
+    rect?: { x: number; y: number; w: number; h: number };
     location?: string;
     latitude?: number; // 纬度
     longitude?: number; // 经度

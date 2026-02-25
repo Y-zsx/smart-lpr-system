@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
 import { Alarm, useAlarmStore } from '../store/alarmStore';
-import { Clock, MapPin, X, Image as ImageIcon, AlertTriangle, Route, CheckCircle, Archive, Trash2 } from 'lucide-react';
+import { Clock, MapPin, X, Image as ImageIcon, Route, CheckCircle, Archive, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { AlarmPathReplay } from './AlarmPathReplay';
 import { useConfirmContext } from '../contexts/ConfirmContext';
 import { useToastContext } from '../contexts/ToastContext';
 import { useAuth } from '../contexts/AuthContext';
+import { type PlateType } from '../types/plate';
 
 interface AlarmDetailProps {
     plateNumber: string;
@@ -13,8 +14,146 @@ interface AlarmDetailProps {
     onClose: () => void;
 }
 
+interface AlarmRect {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+}
+
+interface AlarmImageState {
+    imageUrl: string;
+    rect?: AlarmRect;
+    plateNumber: string;
+    plateType: PlateType;
+}
+
+interface AnnotatedPlateImageProps {
+    imageUrl: string;
+    rect?: AlarmRect;
+    plateNumber: string;
+    plateType?: PlateType;
+    className?: string;
+}
+
+const PLATE_TYPE_COLORS: Record<PlateType, { stroke: string; fill: string; text: string }> = {
+    blue: { stroke: '#2563eb', fill: '#2563eb', text: '#ffffff' },
+    green: { stroke: '#16a34a', fill: '#16a34a', text: '#ffffff' },
+    yellow: { stroke: '#ca8a04', fill: '#ca8a04', text: '#ffffff' },
+    white: { stroke: '#64748b', fill: '#64748b', text: '#ffffff' },
+    black: { stroke: '#1e293b', fill: '#1e293b', text: '#ffffff' },
+};
+
+const isPlateType = (value: unknown): value is PlateType =>
+    value === 'blue' || value === 'green' || value === 'yellow' || value === 'white' || value === 'black';
+
+const extractAlarmRect = (alarm: Alarm): AlarmRect | undefined => {
+    const extra = alarm as Alarm & {
+        rect?: AlarmRect;
+        rect_x?: number;
+        rect_y?: number;
+        rect_w?: number;
+        rect_h?: number;
+    };
+    if (extra.rect && extra.rect.w > 0 && extra.rect.h > 0) {
+        return extra.rect;
+    }
+    if (
+        typeof extra.rect_x === 'number' &&
+        typeof extra.rect_y === 'number' &&
+        typeof extra.rect_w === 'number' &&
+        typeof extra.rect_h === 'number' &&
+        extra.rect_w > 0 &&
+        extra.rect_h > 0
+    ) {
+        return { x: extra.rect_x, y: extra.rect_y, w: extra.rect_w, h: extra.rect_h };
+    }
+    return undefined;
+};
+
+const extractAlarmPlateType = (alarm: Alarm): PlateType => {
+    const extra = alarm as Alarm & {
+        plate_type?: unknown;
+        plateType?: unknown;
+    };
+    if (isPlateType(extra.plate_type)) return extra.plate_type;
+    if (isPlateType(extra.plateType)) return extra.plateType;
+    return 'blue';
+};
+
+const AnnotatedPlateImage: React.FC<AnnotatedPlateImageProps> = ({ imageUrl, rect, plateNumber, plateType = 'blue', className }) => {
+    const [imageSize, setImageSize] = React.useState<{ w: number; h: number }>({ w: 0, h: 0 });
+    const colors = PLATE_TYPE_COLORS[plateType] ?? PLATE_TYPE_COLORS.blue;
+
+    React.useEffect(() => {
+        const img = new Image();
+        img.onload = () => {
+            setImageSize({
+                w: img.naturalWidth || 1,
+                h: img.naturalHeight || 1
+            });
+        };
+        img.src = imageUrl;
+    }, [imageUrl]);
+
+    if (!imageSize.w || !imageSize.h) {
+        return <div className={`bg-gray-200 animate-pulse ${className || ''}`} />;
+    }
+
+    const safeRect = rect && rect.w > 0 && rect.h > 0 ? rect : null;
+    const labelHeight = Math.max(18, Math.round(imageSize.h * 0.04));
+    const labelY = safeRect ? Math.max(0, safeRect.y - labelHeight - 2) : 0;
+
+    return (
+        <svg
+            viewBox={`0 0 ${imageSize.w} ${imageSize.h}`}
+            className={className}
+            preserveAspectRatio="xMidYMid meet"
+        >
+            <image href={imageUrl} x="0" y="0" width={imageSize.w} height={imageSize.h} />
+            {safeRect && (
+                <>
+                    <rect
+                        x={safeRect.x}
+                        y={safeRect.y}
+                        width={safeRect.w}
+                        height={safeRect.h}
+                        fill="none"
+                        stroke={colors.stroke}
+                        strokeWidth={Math.max(2, Math.round(imageSize.w * 0.003))}
+                    />
+                    <rect
+                        x={safeRect.x}
+                        y={labelY}
+                        width={Math.max(safeRect.w, plateNumber.length * labelHeight * 0.6)}
+                        height={labelHeight}
+                        fill={colors.fill}
+                        opacity="0.95"
+                        rx={Math.max(2, Math.round(labelHeight * 0.2))}
+                    />
+                    <text
+                        x={safeRect.x + 6}
+                        y={labelY + labelHeight * 0.72}
+                        fill={colors.text}
+                        fontSize={Math.max(12, Math.round(labelHeight * 0.6))}
+                        fontWeight="700"
+                    >
+                        {plateNumber}
+                    </text>
+                </>
+            )}
+        </svg>
+    );
+};
+
 export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, onClose }) => {
-    const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
+    const [selectedImage, setSelectedImage] = React.useState<AlarmImageState | null>(null);
+    const [showAnnotatedImage, setShowAnnotatedImage] = React.useState(true);
+    const [imageScale, setImageScale] = React.useState(1);
+    const [imageOffset, setImageOffset] = React.useState({ x: 0, y: 0 });
+    const [isDraggingImage, setIsDraggingImage] = React.useState(false);
+    const dragStartRef = React.useRef({ x: 0, y: 0 });
+    const dragOffsetStartRef = React.useRef({ x: 0, y: 0 });
     const [showPathReplay, setShowPathReplay] = useState(false);
     const { markAsRead, deleteAlarm, deleteAlarmsByPlate } = useAlarmStore();
     const { confirm } = useConfirmContext();
@@ -45,6 +184,23 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
 
     // 检查是否有位置信息的告警
     const hasLocationData = alarms.some(alarm => alarm.location);
+
+    const resetImageView = React.useCallback(() => {
+        setImageScale(1);
+        setImageOffset({ x: 0, y: 0 });
+        setIsDraggingImage(false);
+    }, []);
+
+    const closeImageModal = React.useCallback(() => {
+        setSelectedImage(null);
+        setShowAnnotatedImage(true);
+        resetImageView();
+    }, [resetImageView]);
+
+    const clampScale = (nextScale: number) => Math.min(4, Math.max(1, nextScale));
+    const zoomBy = (delta: number) => {
+        setImageScale(prev => clampScale(prev + delta));
+    };
 
     const handleMarkAsRead = async (id: number) => {
         try {
@@ -223,7 +379,16 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                                             <button
                                                 onClick={() => {
                                                     const imageUrl = apiClient.getImageUrl(alarm.image_path);
-                                                    setSelectedImage(imageUrl);
+                                                    const rect = extractAlarmRect(alarm);
+                                                    const nextImage = {
+                                                        imageUrl,
+                                                        rect,
+                                                        plateNumber: alarm.plate_number,
+                                                        plateType: extractAlarmPlateType(alarm),
+                                                    };
+                                                    resetImageView();
+                                                    setSelectedImage(nextImage);
+                                                    setShowAnnotatedImage(Boolean(rect));
                                                 }}
                                                 className="p-2 bg-white hover:bg-blue-50 text-blue-600 rounded-lg border border-gray-200 transition-colors flex-shrink-0"
                                                 title="查看图片"
@@ -252,17 +417,122 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                 {selectedImage && (
                     <div
                         className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 p-4"
-                        onClick={() => setSelectedImage(null)}
+                        onClick={closeImageModal}
                     >
-                        <div className="relative max-w-4xl max-h-[90vh]">
-                            <img
-                                src={selectedImage}
-                                alt="告警图片"
-                                className="max-w-full max-h-[90vh] object-contain rounded-lg"
-                                onClick={(e) => e.stopPropagation()}
-                            />
+                        <div className="relative max-w-5xl w-full max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+                            <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-black/55 backdrop-blur-sm rounded-lg p-2">
+                                <div className="mr-2 flex items-center gap-1 rounded-md bg-white/95 p-1">
+                                    <button
+                                        onClick={() => setShowAnnotatedImage(false)}
+                                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                                            !showAnnotatedImage ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'
+                                        }`}
+                                        title="显示原图"
+                                    >
+                                        原图
+                                    </button>
+                                    <button
+                                        onClick={() => setShowAnnotatedImage(true)}
+                                        className={`px-2 py-1 text-xs rounded transition-colors ${
+                                            showAnnotatedImage ? 'bg-blue-600 text-white' : 'text-gray-700 hover:bg-gray-100'
+                                        }`}
+                                        title={selectedImage.rect ? '显示标注图' : '暂无标注数据，回退原图显示'}
+                                    >
+                                        标注图
+                                    </button>
+                                </div>
+                                <button
+                                    onClick={() => zoomBy(-0.2)}
+                                    disabled={imageScale <= 1}
+                                    className="p-2 bg-white/95 hover:bg-white rounded-lg transition-colors disabled:opacity-50"
+                                    title="缩小"
+                                >
+                                    <ZoomOut size={18} className="text-gray-800" />
+                                </button>
+                                <button
+                                    onClick={() => zoomBy(0.2)}
+                                    disabled={imageScale >= 4}
+                                    className="p-2 bg-white/95 hover:bg-white rounded-lg transition-colors disabled:opacity-50"
+                                    title="放大"
+                                >
+                                    <ZoomIn size={18} className="text-gray-800" />
+                                </button>
+                                <button
+                                    onClick={resetImageView}
+                                    className="p-2 bg-white/95 hover:bg-white rounded-lg transition-colors"
+                                    title="复位"
+                                >
+                                    <RotateCcw size={18} className="text-gray-800" />
+                                </button>
+                                <span className="text-xs text-white px-2">{Math.round(imageScale * 100)}%</span>
+                            </div>
+
+                            <div
+                                className="w-full h-[80vh] overflow-hidden rounded-lg cursor-grab active:cursor-grabbing select-none"
+                                onWheel={(e) => {
+                                    e.preventDefault();
+                                    zoomBy(e.deltaY > 0 ? -0.1 : 0.1);
+                                }}
+                                onMouseDown={(e) => {
+                                    if (imageScale <= 1) return;
+                                    setIsDraggingImage(true);
+                                    dragStartRef.current = { x: e.clientX, y: e.clientY };
+                                    dragOffsetStartRef.current = imageOffset;
+                                }}
+                                onMouseMove={(e) => {
+                                    if (!isDraggingImage || imageScale <= 1) return;
+                                    const dx = e.clientX - dragStartRef.current.x;
+                                    const dy = e.clientY - dragStartRef.current.y;
+                                    setImageOffset({
+                                        x: dragOffsetStartRef.current.x + dx,
+                                        y: dragOffsetStartRef.current.y + dy,
+                                    });
+                                }}
+                                onMouseUp={() => setIsDraggingImage(false)}
+                                onMouseLeave={() => setIsDraggingImage(false)}
+                            >
+                                <div
+                                    className="w-full h-full transition-transform duration-100"
+                                    onDoubleClick={() => {
+                                        setImageOffset({ x: 0, y: 0 });
+                                        setImageScale(prev => (prev <= 1.05 ? 2 : 1));
+                                    }}
+                                    style={{
+                                        transform: `translate(${imageOffset.x}px, ${imageOffset.y}px) scale(${imageScale})`,
+                                        transformOrigin: 'center center',
+                                    }}
+                                >
+                                    <div className="relative w-full h-full">
+                                        <img
+                                            src={selectedImage.imageUrl}
+                                            alt="告警图片原图"
+                                            draggable={false}
+                                            className="absolute inset-0 w-full h-full object-contain rounded-lg"
+                                            style={{
+                                                visibility: showAnnotatedImage && selectedImage.rect ? 'hidden' : 'visible',
+                                                pointerEvents: showAnnotatedImage && selectedImage.rect ? 'none' : 'auto'
+                                            }}
+                                        />
+                                        <div
+                                            className="absolute inset-0 w-full h-full"
+                                            style={{
+                                                visibility: showAnnotatedImage && selectedImage.rect ? 'visible' : 'hidden',
+                                                pointerEvents: showAnnotatedImage && selectedImage.rect ? 'auto' : 'none'
+                                            }}
+                                        >
+                                            <AnnotatedPlateImage
+                                                imageUrl={selectedImage.imageUrl}
+                                                rect={selectedImage.rect}
+                                                plateNumber={selectedImage.plateNumber}
+                                                plateType={selectedImage.plateType}
+                                                className="w-full h-full object-contain rounded-lg"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                             <button
-                                onClick={() => setSelectedImage(null)}
+                                onClick={closeImageModal}
                                 className="absolute top-4 right-4 p-2 bg-white/90 hover:bg-white rounded-full transition-colors"
                             >
                                 <X size={20} className="text-gray-800" />

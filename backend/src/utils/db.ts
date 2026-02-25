@@ -213,54 +213,73 @@ export const deleteBlacklist = async (id: number): Promise<boolean> => {
 
 export const getAlarms = async (): Promise<Alarm[]> => {
   const connection = await pool.getConnection();
+  const alarmQueryWithRect = `
+    SELECT
+      a.*,
+      pr.plate_type AS plate_type,
+      pr.rect_x AS rect_x,
+      pr.rect_y AS rect_y,
+      pr.rect_w AS rect_w,
+      pr.rect_h AS rect_h
+    FROM \`alarms\` a
+    LEFT JOIN \`plate_records\` pr ON a.record_id = pr.id
+    WHERE a.\`is_deleted\` = 0
+    ORDER BY a.\`is_read\` ASC, a.\`timestamp\` DESC
+  `;
+  const alarmFallbackQueryWithRect = `
+    SELECT
+      a.*,
+      pr.plate_type AS plate_type,
+      pr.rect_x AS rect_x,
+      pr.rect_y AS rect_y,
+      pr.rect_w AS rect_w,
+      pr.rect_h AS rect_h
+    FROM \`alarms\` a
+    LEFT JOIN \`plate_records\` pr ON a.record_id = pr.id
+    ORDER BY a.\`is_read\` ASC, a.\`timestamp\` DESC
+  `;
+  const mapAlarmRow = (row: RowDataPacket): Alarm => ({
+    id: row.id,
+    plate_id: row.plate_id || undefined,
+    record_id: row.record_id || undefined,
+    blacklist_id: row.blacklist_id || undefined,
+    timestamp: parseInt(row.timestamp),
+    is_read: row.is_read,
+    plate_number: row.plate_number,
+    camera_id: row.camera_id || undefined,
+    region_code: row.region_code || undefined,
+    image_path: row.image_path || undefined,
+    plate_type: row.plate_type || undefined,
+    rect: row.rect_x !== null && row.rect_y !== null && row.rect_w !== null && row.rect_h !== null
+      ? {
+          x: row.rect_x,
+          y: row.rect_y,
+          w: row.rect_w,
+          h: row.rect_h
+        }
+      : undefined,
+    location: row.location || undefined,
+    latitude: row.latitude ? parseFloat(row.latitude) : undefined,
+    longitude: row.longitude ? parseFloat(row.longitude) : undefined,
+    reason: row.reason,
+    severity: row.severity
+  });
   try {
     // 优先返回未读告警，然后按时间倒序
     // 仅返回未软删除的告警
     const [rows] = await connection.execute<RowDataPacket[]>(
-      'SELECT * FROM `alarms` WHERE `is_deleted` = 0 ORDER BY `is_read` ASC, `timestamp` DESC'
+      alarmQueryWithRect
     );
     
-    return rows.map((row: RowDataPacket) => ({
-      id: row.id,
-      plate_id: row.plate_id || undefined,
-      record_id: row.record_id || undefined,
-      blacklist_id: row.blacklist_id || undefined,
-      timestamp: parseInt(row.timestamp),
-      is_read: row.is_read,
-      plate_number: row.plate_number,
-      camera_id: row.camera_id || undefined,
-      region_code: row.region_code || undefined,
-      image_path: row.image_path || undefined,
-      location: row.location || undefined,
-      latitude: row.latitude ? parseFloat(row.latitude) : undefined,
-      longitude: row.longitude ? parseFloat(row.longitude) : undefined,
-      reason: row.reason,
-      severity: row.severity
-    }));
+    return rows.map(mapAlarmRow);
   } catch (error: any) {
     // 如果 is_deleted 字段不存在，回退到旧查询
     if (error.code === 'ER_BAD_FIELD_ERROR') {
       console.warn('[DB] is_deleted field missing in alarms table, falling back to full query');
       const [rows] = await connection.execute<RowDataPacket[]>(
-        'SELECT * FROM `alarms` ORDER BY `is_read` ASC, `timestamp` DESC'
+        alarmFallbackQueryWithRect
       );
-      return rows.map((row: RowDataPacket) => ({
-        id: row.id,
-        plate_id: row.plate_id || undefined,
-        record_id: row.record_id || undefined,
-        blacklist_id: row.blacklist_id || undefined,
-        timestamp: parseInt(row.timestamp),
-        is_read: row.is_read,
-        plate_number: row.plate_number,
-        camera_id: row.camera_id || undefined,
-        region_code: row.region_code || undefined,
-        image_path: row.image_path || undefined,
-        location: row.location || undefined,
-        latitude: row.latitude ? parseFloat(row.latitude) : undefined,
-        longitude: row.longitude ? parseFloat(row.longitude) : undefined,
-        reason: row.reason,
-        severity: row.severity
-      }));
+      return rows.map(mapAlarmRow);
     }
     throw error;
   } finally {

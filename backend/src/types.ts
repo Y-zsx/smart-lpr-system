@@ -69,6 +69,8 @@ export interface Alarm {
     camera_id?: string;
     region_code?: string;
     image_path?: string;
+    plate_type?: PlateType;
+    rect?: Rect;
     location?: string;
     latitude?: number; // 纬度
     longitude?: number; // 经度
