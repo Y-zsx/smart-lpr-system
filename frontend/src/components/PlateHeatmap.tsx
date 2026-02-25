@@ -5,15 +5,38 @@ import { apiClient } from '../api/client';
 import { Map, Calendar, Database } from 'lucide-react';
 import { usePlateStore } from '../store/plateStore';
 
-const PROVINCE_MAP: Record<string, string> = {
-    '京': '北京市', '津': '天津市', '沪': '上海市', '渝': '重庆市',
-    '冀': '河北省', '豫': '河南省', '云': '云南省', '辽': '辽宁省',
-    '黑': '黑龙江省', '湘': '湖南省', '皖': '安徽省', '鲁': '山东省',
-    '新': '新疆维吾尔自治区', '苏': '江苏省', '浙': '浙江省', '赣': '江西省',
-    '鄂': '湖北省', '桂': '广西壮族自治区', '甘': '甘肃省', '晋': '山西省',
-    '蒙': '内蒙古自治区', '陕': '陕西省', '吉': '吉林省', '闽': '福建省',
-    '贵': '贵州省', '粤': '广东省', '青': '青海省', '藏': '西藏自治区',
-    '川': '四川省', '宁': '宁夏回族自治区', '琼': '海南省'
+const PROVINCE_MAP: Record<string, string[]> = {
+    '京': ['北京', '北京市'],
+    '津': ['天津', '天津市'],
+    '沪': ['上海', '上海市'],
+    '渝': ['重庆', '重庆市'],
+    '冀': ['河北', '河北省'],
+    '豫': ['河南', '河南省'],
+    '云': ['云南', '云南省'],
+    '辽': ['辽宁', '辽宁省'],
+    '黑': ['黑龙江', '黑龙江省'],
+    '湘': ['湖南', '湖南省'],
+    '皖': ['安徽', '安徽省'],
+    '鲁': ['山东', '山东省'],
+    '新': ['新疆', '新疆维吾尔自治区'],
+    '苏': ['江苏', '江苏省'],
+    '浙': ['浙江', '浙江省'],
+    '赣': ['江西', '江西省'],
+    '鄂': ['湖北', '湖北省'],
+    '桂': ['广西', '广西壮族自治区'],
+    '甘': ['甘肃', '甘肃省'],
+    '晋': ['山西', '山西省'],
+    '蒙': ['内蒙古', '内蒙古自治区'],
+    '陕': ['陕西', '陕西省'],
+    '吉': ['吉林', '吉林省'],
+    '闽': ['福建', '福建省'],
+    '贵': ['贵州', '贵州省'],
+    '粤': ['广东', '广东省'],
+    '青': ['青海', '青海省'],
+    '藏': ['西藏', '西藏自治区'],
+    '川': ['四川', '四川省'],
+    '宁': ['宁夏', '宁夏回族自治区'],
+    '琼': ['海南', '海南省']
 };
 
 interface PlateHeatmapProps {
@@ -87,13 +110,16 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) =
                     const timestamp = date ? new Date(date).getTime() : undefined;
                     const stats = await apiClient.getRegionStats(actualViewMode, timestamp);
                     // stats 格式为 [{province: '苏', count: 10}, ...]
-
-                    const formattedData = stats.map((item: any) => ({
-                        name: PROVINCE_MAP[item.province] || item.province,
-                        value: item.count
-                    }));
-
-                    setMapData(formattedData);
+                    // 不同地图源省份命名可能是“江苏”或“江苏省”，这里同时生成别名确保都能匹配。
+                    const normalized = new Map<string, number>();
+                    stats.forEach((item: any) => {
+                        const aliases = PROVINCE_MAP[item.province] || [item.province];
+                        aliases.forEach((name) => {
+                            if (!name) return;
+                            normalized.set(name, item.count);
+                        });
+                    });
+                    setMapData(Array.from(normalized.entries()).map(([name, value]) => ({ name, value })));
                 }
             } catch (error) {
                 console.error("获取区域统计失败", error);
