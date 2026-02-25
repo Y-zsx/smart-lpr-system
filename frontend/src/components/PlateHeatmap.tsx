@@ -22,9 +22,11 @@ interface PlateHeatmapProps {
 
 export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) => {
     const CHINA_GEOJSON_SOURCES = [
-        // Prefer a stable CDN first; some origins may deny requests by Referer ACL.
-        'https://fastly.jsdelivr.net/npm/echarts@5/map/json/china.json',
-        'https://cdn.jsdelivr.net/npm/echarts@5/map/json/china.json',
+        // ECharts v5 package does not contain this map path on CDN.
+        // Use v4.9.0 published map assets first, then fallback to Aliyun source.
+        'https://fastly.jsdelivr.net/npm/echarts@4.9.0/map/json/china.json',
+        'https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/json/china.json',
+        'https://unpkg.com/echarts@4.9.0/map/json/china.json',
         'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json'
     ];
     const [viewMode, setViewMode] = useState<'daily' | 'total'>('total');
