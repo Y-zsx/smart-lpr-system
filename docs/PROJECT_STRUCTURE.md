@@ -53,7 +53,7 @@
 
 - **app/** — 服务核心实现
 - **evaluation/** — 评估脚本
-- 根目录 **main.py**、**evaluation.py** 为兼容入口，用法不变。
+- 统一通过模块入口启动：`python -m app.main`（服务）与 `python -m evaluation.evaluate`（评估）。
 
 ## 开发约定
 

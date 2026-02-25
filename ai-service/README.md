@@ -6,7 +6,7 @@
 
 ```bash
 pip install -r requirements.txt
-python main.py
+python -m app.main
 ```
 
 服务地址：http://localhost:8001
@@ -14,17 +14,31 @@ python main.py
 ## 环境变量
 
 - `AI_CORS_ORIGINS`：允许跨域来源，逗号分隔（默认：`http://localhost:5173,http://localhost:3000`）
+- `AI_ENABLE_PROVINCE_CONFLICT_RESOLVE`：是否启用“同尾号省份冲突消解”（默认：`false`）
+- `AI_ENABLE_TEMPORAL_PROVINCE_VOTE`：是否启用“跨帧省份投票纠偏”（默认：`false`）
+- `AI_NON_CN_MIN_CONFIDENCE_FLOOR`：非标准格式候选的最低置信度下限（默认：`0.75`，取值范围 `0~1`）
+- `AI_VARIANT_PROFILE`：预处理分支策略（`native` | `balanced` | `aggressive`，默认：`native`）
+  - `native`：仅原图识别（推荐，最贴近模型原生用法）
+  - `balanced`：原图 + 轻增强（低照补偿）
+  - `aggressive`：原图 + 强增强 + 缩放 + 旋转（更激进，可能引入误检）
+- `AI_BOX_IOU_MERGE_THRESHOLD`：同位置候选合并 IoU 阈值（默认：`0.35`，可调低到 `0.2` 降低“一车多牌”）
 - 示例：
 
 ```bash
 set AI_CORS_ORIGINS=http://localhost:5173,https://your-domain.com
-python main.py
+set AI_ENABLE_PROVINCE_CONFLICT_RESOLVE=false
+set AI_ENABLE_TEMPORAL_PROVINCE_VOTE=false
+set AI_NON_CN_MIN_CONFIDENCE_FLOOR=0.75
+set AI_VARIANT_PROFILE=native
+set AI_BOX_IOU_MERGE_THRESHOLD=0.2
+python -m app.main
 ```
 
 ## 目录结构
 
 - `app/` — 服务核心（main.py）；`evaluation/` — 评估脚本（evaluate.py）
-- `main.py`、`evaluation.py` 为兼容入口，委托到上述目录。原有 `python main.py`、`python evaluation.py` 用法不变。
+- 启动服务：`python -m app.main`
+- 启动评估：`python -m evaluation.evaluate --ground-truth <gt.json> --predictions <pred.json>`
 
 ## API
 

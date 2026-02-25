@@ -920,7 +920,7 @@ pm2 logs smart-lpr-ai
 # 检查 Python 虚拟环境
 cd ~/smart-lpr-system/ai-service
 source venv/bin/activate
-python main.py
+python -m app.main
 ```
 
 **常见原因**：

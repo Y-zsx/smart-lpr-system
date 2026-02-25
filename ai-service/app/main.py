@@ -71,6 +71,32 @@ _STREAM_HISTORY: Dict[str, Dict] = {}
 _STREAM_HISTORY_LOCK = Lock()
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+_ENABLE_PROVINCE_CONFLICT_RESOLVE = _env_bool("AI_ENABLE_PROVINCE_CONFLICT_RESOLVE", False)
+_ENABLE_TEMPORAL_PROVINCE_VOTE = _env_bool("AI_ENABLE_TEMPORAL_PROVINCE_VOTE", False)
+_NON_CN_MIN_CONFIDENCE_FLOOR = min(max(_env_float("AI_NON_CN_MIN_CONFIDENCE_FLOOR", 0.75), 0.0), 1.0)
+_VARIANT_PROFILE = (os.getenv("AI_VARIANT_PROFILE", "native").strip().lower() or "native")
+if _VARIANT_PROFILE not in ("native", "balanced", "aggressive"):
+    _VARIANT_PROFILE = "native"
+_BOX_IOU_MERGE_THRESHOLD = min(max(_env_float("AI_BOX_IOU_MERGE_THRESHOLD", _BOX_IOU_MERGE_THRESHOLD), 0.05), 0.95)
+
+
 def _is_dark_scene(image: np.ndarray) -> bool:
     if image is None or image.size == 0:
         return False
@@ -101,8 +127,16 @@ def _gamma_brighten(image: np.ndarray, gamma: float = 1.3) -> np.ndarray:
 def _build_variants(image: np.ndarray) -> List[Tuple[np.ndarray, float, float]]:
     # 返回 (variant_image, scale_x, scale_y)，用于把检测框映射回原图坐标系
     variants: List[Tuple[np.ndarray, float, float]] = [(image, 1.0, 1.0)]
+    if _VARIANT_PROFILE == "native":
+        return variants
+
     enhanced = _unsharp_mask(_apply_clahe(image))
     variants.append((enhanced, 1.0, 1.0))
+    if _VARIANT_PROFILE == "balanced":
+        if _is_dark_scene(image):
+            variants.append((_gamma_brighten(enhanced, gamma=1.25), 1.0, 1.0))
+        return variants
+
     h, w = image.shape[:2]
     if min(h, w) < 720:
         up = cv2.resize(enhanced, None, fx=1.4, fy=1.4, interpolation=cv2.INTER_CUBIC)
@@ -345,7 +379,9 @@ async def recognize(
                 normalized_code = _normalize_plate_text(code)
                 corrected_code = _correct_plate_text(normalized_code)
                 looks_valid = _looks_like_cn_plate(corrected_code)
-                effective_min_confidence = min_confidence if looks_valid else max(min_confidence, 0.9)
+                effective_min_confidence = (
+                    min_confidence if looks_valid else max(min_confidence, _NON_CN_MIN_CONFIDENCE_FLOOR)
+                )
                 if confidence < effective_min_confidence:
                     continue
                 x1, y1, x2, y2 = box
@@ -371,8 +407,11 @@ async def recognize(
                     }
                 )
 
-        plates = _resolve_province_conflicts(_merge_candidates(candidates))
-        plates = _stabilize_with_temporal_vote(stream_key, plates)
+        plates = _merge_candidates(candidates)
+        if _ENABLE_PROVINCE_CONFLICT_RESOLVE:
+            plates = _resolve_province_conflicts(plates)
+        if _ENABLE_TEMPORAL_PROVINCE_VOTE:
+            plates = _stabilize_with_temporal_vote(stream_key, plates)
         plates.sort(key=lambda p: (p["rect"]["y"], p["rect"]["x"]))
         if max_plates > 0:
             plates = plates[:max_plates]
@@ -389,7 +428,12 @@ async def recognize(
                 "min_confidence": min_confidence,
                 "max_plates": max_plates,
                 "variants": len(variants),
+                "variant_profile": _VARIANT_PROFILE,
                 "plate_count": len(plates),
+                "conflict_resolve_enabled": _ENABLE_PROVINCE_CONFLICT_RESOLVE,
+                "temporal_vote_enabled": _ENABLE_TEMPORAL_PROVINCE_VOTE,
+                "non_cn_min_conf_floor": _NON_CN_MIN_CONFIDENCE_FLOOR,
+                "iou_merge_threshold": _BOX_IOU_MERGE_THRESHOLD,
                 "elapsed_ms": elapsed_ms,
             },
         )

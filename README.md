@@ -41,7 +41,7 @@
 ```bash
 cd ai-service
 pip install -r requirements.txt
-python main.py
+python -m app.main
 ```
 
 #### 2. 配置并启动后端
@@ -104,8 +104,6 @@ smart-lpr-system/
 ├── ai-service/           # AI 识别服务 (Python + FastAPI)
 │   ├── app/              # 服务核心实现
 │   ├── evaluation/       # 评估脚本
-│   ├── main.py           # 兼容入口 → app.main
-│   ├── evaluation.py     # 兼容入口 → evaluation.evaluate
 │   └── requirements.txt
 │
 ├── docs/                 # 项目文档（见下方「文档」）

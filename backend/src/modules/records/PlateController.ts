@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import FormData from 'form-data';
 import fs from 'fs-extra';
+import path from 'path';
 import { AuthenticatedRequest } from '../auth';
 import { filterPlateGroupsByScope } from '../../utils/dataScope';
 import { isValidChinesePlateNumber } from '../../utils/plateValidation';
@@ -12,6 +13,8 @@ import { isValidChinesePlateNumber } from '../../utils/plateValidation';
 const AI_SERVICE_URL = (process.env.AI_SERVICE_URL || 'http://localhost:8001').trim().replace(/\/$/, '');
 const AI_RECOGNIZE_TIMEOUT_MS = Math.max(500, Number(process.env.AI_RECOGNIZE_TIMEOUT_MS || 5000));
 const AI_RECOGNIZE_RETRIES = Math.max(0, Number(process.env.AI_RECOGNIZE_RETRIES || 1));
+const RECORDS_UPLOAD_DIR = path.join(__dirname, '../../../uploads/records');
+fs.ensureDirSync(RECORDS_UPLOAD_DIR);
 
 const shouldRetryAiError = (error: unknown): boolean => {
     if (!axios.isAxiosError(error)) {
@@ -148,6 +151,7 @@ export const savePlate = async (req: Request, res: Response) => {
 export const recognizePlate = async (req: Request, res: Response) => {
     const file = req.file;
     const requestStartedAt = Date.now();
+    let shouldCleanupTempFile = true;
     try {
         if (!file) {
             res.status(400).json({ message: 'No file uploaded' });
@@ -211,6 +215,19 @@ export const recognizePlate = async (req: Request, res: Response) => {
             }
 
             const aiPlates = aiResponse.data.plates || [];
+            let persistedImageUrl = `uploads/temp/${file.filename}`;
+            if (aiPlates.length > 0 && file?.path) {
+                try {
+                    const persistedFilename = `${Date.now()}-${file.filename}`;
+                    const persistedPath = path.join(RECORDS_UPLOAD_DIR, persistedFilename);
+                    await fs.move(file.path, persistedPath, { overwrite: false });
+                    persistedImageUrl = `uploads/records/${persistedFilename}`;
+                } catch (persistError) {
+                    // 兜底：转存失败时保留 temp 文件，避免记录中的图片地址失效
+                    shouldCleanupTempFile = false;
+                    console.warn('Failed to persist recognized image to records dir, fallback to temp path:', persistError);
+                }
+            }
             console.info(
                 '[AI] recognize success',
                 JSON.stringify({
@@ -231,7 +248,7 @@ export const recognizePlate = async (req: Request, res: Response) => {
                 saved: false,
                 location: location || cameraName || '未知位置',
                 regionCode,
-                imageUrl: `uploads/temp/${file.filename}`,
+                imageUrl: persistedImageUrl,
                 cameraId: cameraId,
                 cameraName: cameraName || '未知摄像头'
             }));
@@ -254,7 +271,7 @@ export const recognizePlate = async (req: Request, res: Response) => {
         res.status(500).json({ message: 'Error recognizing plate' });
     } finally {
         console.info('[AI] recognize request done', JSON.stringify({ elapsedMs: Date.now() - requestStartedAt }));
-        if (file?.path) {
+        if (file?.path && shouldCleanupTempFile) {
             try {
                 await fs.remove(file.path);
             } catch (cleanupError) {
