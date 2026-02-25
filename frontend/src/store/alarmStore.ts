@@ -49,6 +49,7 @@ export const useAlarmStore = create<AlarmStore>((set, get) => ({
             }
         } catch (error) {
             console.error('Failed to fetch alarms:', error);
+            throw error;
         }
     },
     addAlarm: (alarm) => set((state) => {

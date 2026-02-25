@@ -1,5 +1,6 @@
 import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
+import bcrypt from 'bcryptjs';
 
 dotenv.config();
 
@@ -278,13 +279,19 @@ export const initDatabase = async (): Promise<void> => {
       );
     }
 
-    // Seed users (demo)
+    // Seed users
     const adminUsername = process.env.ADMIN_USERNAME || 'admin';
     const adminPassword = process.env.ADMIN_PASSWORD || 'admin123';
     const operatorUsername = process.env.OPERATOR_USERNAME || 'operator';
     const operatorPassword = process.env.OPERATOR_PASSWORD || 'operator123';
     const viewerUsername = process.env.VIEWER_USERNAME || 'viewer';
     const viewerPassword = process.env.VIEWER_PASSWORD || 'viewer123';
+    const passwordSaltRounds = Math.max(8, Number(process.env.PASSWORD_SALT_ROUNDS || 10));
+    const [adminPasswordHash, operatorPasswordHash, viewerPasswordHash] = await Promise.all([
+      bcrypt.hash(adminPassword, passwordSaltRounds),
+      bcrypt.hash(operatorPassword, passwordSaltRounds),
+      bcrypt.hash(viewerPassword, passwordSaltRounds)
+    ]);
 
     await connection.execute(
       `INSERT INTO iam_users (id, username, password, display_name, status, created_at, updated_at)
@@ -293,7 +300,7 @@ export const initDatabase = async (): Promise<void> => {
        ('user_operator', ?, ?, '值班员', 'active', ?, ?),
        ('user_viewer', ?, ?, '访客', 'active', ?, ?)
        ON DUPLICATE KEY UPDATE password = VALUES(password), display_name = VALUES(display_name), status = VALUES(status), updated_at = VALUES(updated_at)`,
-      [adminUsername, adminPassword, now, now, operatorUsername, operatorPassword, now, now, viewerUsername, viewerPassword, now, now]
+      [adminUsername, adminPasswordHash, now, now, operatorUsername, operatorPasswordHash, now, now, viewerUsername, viewerPasswordHash, now, now]
     );
 
     // Seed role-permissions

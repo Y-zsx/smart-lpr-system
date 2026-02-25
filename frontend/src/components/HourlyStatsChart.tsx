@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts';
-import { apiClient } from '../api/client';
 import { Clock } from 'lucide-react';
 import { usePlateStore } from '../store/plateStore';
+import { usePlateHistory } from '@/hooks/usePlateHistory';
 
 interface HourlyStatsChartProps {
     date?: string; // 可选的日期参数，undefined 表示总量模式
@@ -13,6 +13,7 @@ export const HourlyStatsChart: React.FC<HourlyStatsChartProps> = React.memo(({ d
     const [hourlyData, setHourlyData] = useState<number[]>(new Array(24).fill(0));
     const [loading, setLoading] = useState(true);
     const { settings } = usePlateStore();
+    const { data: groups } = usePlateHistory({ date, groupBy: 'plate' });
 
     useEffect(() => {
         const fetchHourlyStats = async () => {
@@ -24,22 +25,10 @@ export const HourlyStatsChart: React.FC<HourlyStatsChartProps> = React.memo(({ d
                     setHourlyData(mockData);
                     await new Promise(resolve => setTimeout(resolve, 500));
                 } else {
-                    let start: number | undefined;
-                    let end: number | undefined;
-                    
-                    if (date) {
-                        // 日期模式：获取指定日期的小时数据
-                        start = new Date(date).setHours(0, 0, 0, 0);
-                        end = new Date(date).setHours(23, 59, 59, 999);
-                    }
-                    
-                    // 获取分组数据
-                    const groups = await apiClient.getHistory(start, end, undefined, 'plate');
-                    
                     // 按小时统计
                     const hourlyCounts = new Array(24).fill(0);
-                    (groups as any[]).forEach((group: any) => {
-                        group.records.forEach((record: any) => {
+                    groups.forEach((group) => {
+                        group.records.forEach((record) => {
                             const hour = new Date(record.timestamp).getHours();
                             hourlyCounts[hour]++;
                         });
@@ -58,7 +47,7 @@ export const HourlyStatsChart: React.FC<HourlyStatsChartProps> = React.memo(({ d
         };
 
         fetchHourlyStats();
-    }, [date, settings.isDemoMode]);
+    }, [date, settings.isDemoMode, groups]);
 
     const getOption = () => {
         const hours = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, '0')}:00`);

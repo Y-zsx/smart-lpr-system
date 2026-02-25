@@ -1,5 +1,5 @@
-import { Request, Response } from 'express';
-import { getPlates as getPlatesFromDb, savePlateRecord, getPlateGroups, deletePlateRecord, deletePlateRecordsByNumber } from '../../utils/db';
+import { NextFunction, Request, Response } from 'express';
+import { savePlateRecord, getPlateGroups, deletePlateRecord, deletePlateRecordsByNumber } from '../../utils/db';
 import { LicensePlate, PlateType, PlateRecord } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
@@ -9,10 +9,12 @@ import path from 'path';
 import { AuthenticatedRequest } from '../auth';
 import { filterPlateGroupsByScope } from '../../utils/dataScope';
 import { isValidChinesePlateNumber } from '../../utils/plateValidation';
+import { AppError } from '../../utils/AppError';
 
 const AI_SERVICE_URL = (process.env.AI_SERVICE_URL || 'http://localhost:8001').trim().replace(/\/$/, '');
 const AI_RECOGNIZE_TIMEOUT_MS = Math.max(500, Number(process.env.AI_RECOGNIZE_TIMEOUT_MS || 5000));
 const AI_RECOGNIZE_RETRIES = Math.max(0, Number(process.env.AI_RECOGNIZE_RETRIES || 1));
+const AI_FAILURE_MODE = (process.env.AI_FAILURE_MODE || 'structured').trim().toLowerCase();
 const RECORDS_UPLOAD_DIR = path.join(__dirname, '../../../uploads/records');
 fs.ensureDirSync(RECORDS_UPLOAD_DIR);
 
@@ -30,7 +32,7 @@ const shouldRetryAiError = (error: unknown): boolean => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export const getPlates = async (req: AuthenticatedRequest, res: Response) => {
+export const getPlates = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const { start, end, type, plateNumber, groupBy } = req.query;
 
@@ -45,65 +47,53 @@ export const getPlates = async (req: AuthenticatedRequest, res: Response) => {
             return;
         }
 
-        try {
-            const groups = await getPlateGroups({
-                start: start ? Number(start) : undefined,
-                end: end ? Number(end) : undefined,
-                type: type as string | undefined,
-                plateNumber: plateNumber as string | undefined
-            });
-            const scopedGroups = filterPlateGroupsByScope(groups, req.dataScope);
+        const groups = await getPlateGroups({
+            start: start ? Number(start) : undefined,
+            end: end ? Number(end) : undefined,
+            type: type as string | undefined,
+            plateNumber: plateNumber as string | undefined
+        });
+        const scopedGroups = filterPlateGroupsByScope(groups, req.dataScope);
 
-            const records: LicensePlate[] = [];
-            for (const group of scopedGroups) {
-                for (const record of group.records) {
-                    records.push({
-                        id: record.id,
-                        number: record.plateNumber,
-                        type: record.plateType,
-                        confidence: record.confidence,
-                        timestamp: record.timestamp,
-                        imageUrl: record.imageUrl,
-                        location: record.location,
-                        rect: record.rect,
-                        saved: true,
-                        cameraId: record.cameraId,
-                        cameraName: record.cameraName
-                    });
-                }
+        const records: LicensePlate[] = [];
+        for (const group of scopedGroups) {
+            for (const record of group.records) {
+                records.push({
+                    id: record.id,
+                    number: record.plateNumber,
+                    type: record.plateType,
+                    confidence: record.confidence,
+                    timestamp: record.timestamp,
+                    imageUrl: record.imageUrl,
+                    location: record.location,
+                    rect: record.rect,
+                    saved: true,
+                    cameraId: record.cameraId,
+                    cameraName: record.cameraName
+                });
             }
-
-            records.sort((a, b) => b.timestamp - a.timestamp);
-            res.json(records);
-            return;
-        } catch (error) {
-            console.warn('从 plate_records 查询失败，尝试从 plates 表查询:', error);
-            const plates = await getPlatesFromDb({
-                start: start ? Number(start) : undefined,
-                end: end ? Number(end) : undefined,
-                type: type as string | undefined
-            });
-            res.json(plates);
         }
+
+        records.sort((a, b) => b.timestamp - a.timestamp);
+        res.json(records);
     } catch (error) {
         console.error('Error fetching plates:', error);
-        res.status(500).json({ message: 'Error fetching plates' });
+        next(new AppError('Error fetching plates', 500, 'PLATES_FETCH_FAILED'));
     }
 };
 
-export const savePlate = async (req: Request, res: Response) => {
+export const savePlate = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const plateData: LicensePlate = req.body;
 
         if (!plateData?.number?.trim()) {
-            res.status(400).json({ message: '车牌号不能为空' });
+            next(new AppError('车牌号不能为空', 400, 'VALIDATION_ERROR'));
             return;
         }
         if (!isValidChinesePlateNumber(plateData.number)) {
-            res.status(400).json({
-                message: '车牌号格式不合法，仅支持中国车牌格式（如京A·12345），非法结果将不入库',
+            next(new AppError('车牌号格式不合法，仅支持中国车牌格式（如京A·12345），非法结果将不入库', 400, 'INVALID_PLATE_NUMBER', {
                 plateNumber: plateData.number
-            });
+            }));
             return;
         }
 
@@ -141,20 +131,17 @@ export const savePlate = async (req: Request, res: Response) => {
         res.json(response);
     } catch (error) {
         console.error('Error saving plate:', error);
-        res.status(500).json({
-            message: 'Error saving plate',
-            error: error instanceof Error ? error.message : String(error)
-        });
+        next(new AppError('Error saving plate', 500, 'PLATE_SAVE_FAILED'));
     }
 };
 
-export const recognizePlate = async (req: Request, res: Response) => {
+export const recognizePlate = async (req: Request, res: Response, next: NextFunction) => {
     const file = req.file;
     const requestStartedAt = Date.now();
     let shouldCleanupTempFile = true;
     try {
         if (!file) {
-            res.status(400).json({ message: 'No file uploaded' });
+            next(new AppError('No file uploaded', 400, 'VALIDATION_ERROR'));
             return;
         }
 
@@ -207,10 +194,9 @@ export const recognizePlate = async (req: Request, res: Response) => {
 
             if (aiResponse.data.error) {
                 console.error('AI Service returned error:', aiResponse.data.error);
-                res.status(502).json({
-                    message: 'AI recognition error',
-                    error: aiResponse.data.error
-                });
+                next(new AppError('AI recognition error', 502, 'AI_RECOGNITION_ERROR', {
+                    reason: aiResponse.data.error
+                }));
                 return;
             }
 
@@ -257,18 +243,26 @@ export const recognizePlate = async (req: Request, res: Response) => {
         } catch (aiError) {
             console.error('AI Service Error:', aiError);
             if (axios.isAxiosError(aiError) && aiError.code === 'ECONNABORTED') {
-                res.status(504).json({ message: `AI Service timeout (${AI_RECOGNIZE_TIMEOUT_MS}ms)` });
+                next(new AppError(`AI Service timeout (${AI_RECOGNIZE_TIMEOUT_MS}ms)`, 504, 'AI_TIMEOUT'));
                 return;
             }
-            res.status(503).json({
-                message: 'AI Service unavailable. Please ensure python service is running.',
+            if (AI_FAILURE_MODE === 'degrade') {
+                res.status(200).json({
+                    plates: [],
+                    degraded: true,
+                    code: 'AI_UNAVAILABLE',
+                    message: 'AI 服务暂不可用，已按降级策略返回空识别结果'
+                });
+                return;
+            }
+            next(new AppError('AI Service unavailable. Please ensure python service is running.', 503, 'AI_UNAVAILABLE', {
                 aiServiceUrl: AI_SERVICE_URL
-            });
+            }));
             return;
         }
     } catch (error) {
         console.error('Recognition error:', error);
-        res.status(500).json({ message: 'Error recognizing plate' });
+        next(new AppError('Error recognizing plate', 500, 'PLATE_RECOGNIZE_FAILED'));
     } finally {
         console.info('[AI] recognize request done', JSON.stringify({ elapsedMs: Date.now() - requestStartedAt }));
         if (file?.path && shouldCleanupTempFile) {
@@ -281,11 +275,11 @@ export const recognizePlate = async (req: Request, res: Response) => {
     }
 };
 
-export const deletePlate = async (req: Request, res: Response) => {
+export const deletePlate = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { id } = req.query;
         if (!id || typeof id !== 'string') {
-            res.status(400).json({ message: '缺少记录ID参数' });
+            next(new AppError('缺少记录ID参数', 400, 'VALIDATION_ERROR'));
             return;
         }
         const deleted = await deletePlateRecord(id);
@@ -296,27 +290,21 @@ export const deletePlate = async (req: Request, res: Response) => {
         }
     } catch (error) {
         console.error('Error deleting plate record:', error);
-        res.status(500).json({
-            message: '删除失败',
-            error: error instanceof Error ? error.message : String(error)
-        });
+        next(new AppError('删除失败', 500, 'PLATE_DELETE_FAILED'));
     }
 };
 
-export const deletePlatesByNumber = async (req: Request, res: Response) => {
+export const deletePlatesByNumber = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { plateNumber } = req.query;
         if (!plateNumber || typeof plateNumber !== 'string') {
-            res.status(400).json({ message: '缺少车牌号参数' });
+            next(new AppError('缺少车牌号参数', 400, 'VALIDATION_ERROR'));
             return;
         }
         const deletedCount = await deletePlateRecordsByNumber(plateNumber);
         res.json({ message: '删除成功', deletedCount, plateNumber });
     } catch (error) {
         console.error('Error deleting plates by number:', error);
-        res.status(500).json({
-            message: '删除失败',
-            error: error instanceof Error ? error.message : String(error)
-        });
+        next(new AppError('删除失败', 500, 'PLATE_DELETE_BY_NUMBER_FAILED'));
     }
 };

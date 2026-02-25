@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
+import rateLimit from 'express-rate-limit';
 import * as PlateController from '../modules/records/PlateController';
 import * as ExportController from '../modules/records/ExportController';
 import * as StatsController from '../modules/stats/controller';
@@ -14,6 +15,24 @@ import { applyDataScope, requireAuth, requirePermission } from '../modules/auth'
 
 const router = Router();
 const MAX_FILE_SIZE = Math.max(1024 * 1024, Number(process.env.MAX_FILE_SIZE || 10 * 1024 * 1024));
+const authLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: Number(process.env.AUTH_RATE_LIMIT_PER_MINUTE || 12),
+    standardHeaders: true,
+    legacyHeaders: false
+});
+const recognizeLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: Number(process.env.RECOGNIZE_RATE_LIMIT_PER_MINUTE || 60),
+    standardHeaders: true,
+    legacyHeaders: false
+});
+const uploadLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: Number(process.env.UPLOAD_RATE_LIMIT_PER_MINUTE || 40),
+    standardHeaders: true,
+    legacyHeaders: false
+});
 const upload = multer({
     dest: path.join(__dirname, '../../uploads/temp'),
     limits: {
@@ -31,7 +50,7 @@ const upload = multer({
 });
 
 // Auth
-router.post('/auth/login', AuthController.login);
+router.post('/auth/login', authLimiter, AuthController.login);
 router.get('/auth/me', requireAuth, AuthController.me);
 router.get('/iam/users', requireAuth, requirePermission('iam.manage'), IamController.getUsers);
 router.get('/iam/roles', requireAuth, requirePermission('iam.manage'), IamController.getRoles);
@@ -45,11 +64,11 @@ router.get('/plates', requireAuth, requirePermission('records.view'), applyDataS
 router.post('/plates', requireAuth, requirePermission('plate.manage'), PlateController.savePlate);
 router.delete('/plates', requireAuth, requirePermission('plate.manage'), PlateController.deletePlate);
 router.delete('/plates/by-number', requireAuth, requirePermission('plate.manage'), PlateController.deletePlatesByNumber);
-router.post('/recognize', requireAuth, requirePermission('monitor.view'), requirePermission('plate.manage'), upload.single('file'), PlateController.recognizePlate);
+router.post('/recognize', recognizeLimiter, requireAuth, requirePermission('monitor.view'), requirePermission('plate.manage'), upload.single('file'), PlateController.recognizePlate);
 
 // Upload
-router.post('/upload-url', requireAuth, requirePermission('plate.manage'), UploadController.getUploadUrl);
-router.put('/upload/put/:filename', requireAuth, requirePermission('plate.manage'), UploadController.handleFileUpload);
+router.post('/upload-url', uploadLimiter, requireAuth, requirePermission('plate.manage'), UploadController.getUploadUrl);
+router.put('/upload/put/:filename', uploadLimiter, requireAuth, requirePermission('plate.manage'), UploadController.handleFileUpload);
 
 // Stats
 router.get('/stats/daily', requireAuth, requirePermission('dashboard.view'), applyDataScope(), StatsController.getDailyStats);

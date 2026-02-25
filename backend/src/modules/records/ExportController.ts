@@ -1,10 +1,11 @@
-import { Response } from 'express';
+import { NextFunction, Response } from 'express';
 import { getAllPlateRecords } from '../../utils/db';
 import { stringify } from 'csv-stringify';
 import { AuthenticatedRequest } from '../auth';
 import { filterItemsByScope } from '../../utils/dataScope';
+import { AppError } from '../../utils/AppError';
 
-export const exportRecords = async (req: AuthenticatedRequest, res: Response) => {
+export const exportRecords = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const { start, end, search } = req.query;
 
@@ -43,9 +44,6 @@ export const exportRecords = async (req: AuthenticatedRequest, res: Response) =>
         stringify(data, { header: true, bom: false }).pipe(res);
     } catch (error) {
         console.error('Error exporting records:', error);
-        res.status(500).json({
-            message: 'Error exporting records',
-            error: error instanceof Error ? error.message : String(error)
-        });
+        next(new AppError('Error exporting records', 500, 'EXPORT_FAILED'));
     }
 };

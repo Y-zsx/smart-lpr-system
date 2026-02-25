@@ -3,6 +3,7 @@ import { X, Clock, MapPin, ChevronRight } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { PlateGroup } from '../types/plate';
 import { PlateDetail } from './PlateDetail';
+import { usePlateHistory } from '@/hooks/usePlateHistory';
 
 interface CategoryDetailProps {
     type: string;
@@ -15,31 +16,16 @@ export const CategoryDetail: React.FC<CategoryDetailProps> = ({ type, label, onC
     const [groups, setGroups] = useState<PlateGroup[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedGroup, setSelectedGroup] = useState<PlateGroup | null>(null);
+    const { data: historyGroups, loading: historyLoading } = usePlateHistory({
+        date,
+        type,
+        groupBy: 'plate'
+    });
 
     useEffect(() => {
-        const fetchGroups = async () => {
-            try {
-                // 如果提供了日期，计算该日期的开始和结束时间
-                let start: number | undefined;
-                let end: number | undefined;
-                
-                if (date) {
-                    start = new Date(date).setHours(0, 0, 0, 0);
-                    end = new Date(date).setHours(23, 59, 59, 999);
-                }
-                
-                // 使用分组查询，获取不重复的车牌号
-                const data = await apiClient.getHistory(start, end, type, 'plate');
-                setGroups(Array.isArray(data) ? data : []);
-            } catch (error) {
-                console.error("获取分类详情失败", error);
-                setGroups([]);
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchGroups();
-    }, [type, date]);
+        setGroups(historyGroups);
+        setLoading(historyLoading);
+    }, [historyGroups, historyLoading]);
 
     const getImageUrl = (path?: string) => {
         return apiClient.getImageUrl(path);

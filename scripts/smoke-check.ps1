@@ -1,9 +1,12 @@
 # 服务健康检查脚本（需先启动后端，可选启动 AI 服务）
 # 用法：在项目根目录执行 .\scripts\smoke-check.ps1
+# 可选环境变量：SMOKE_USERNAME / SMOKE_PASSWORD（默认 admin/admin123）
 
 $ErrorActionPreference = "Stop"
 $backend = "http://localhost:8000"
 $ai = "http://localhost:8001"
+$username = if ($env:SMOKE_USERNAME) { $env:SMOKE_USERNAME } else { "admin" }
+$password = if ($env:SMOKE_PASSWORD) { $env:SMOKE_PASSWORD } else { "admin123" }
 $failed = 0
 
 Write-Host "=== Smart LPR 健康检查 ===" -ForegroundColor Cyan
@@ -24,7 +27,7 @@ try {
 
 # 2. 登录接口
 try {
-    $body = @{ username = "admin"; password = "admin123" } | ConvertTo-Json
+    $body = @{ username = $username; password = $password } | ConvertTo-Json
     $r = Invoke-WebRequest -Uri "$backend/api/auth/login" -Method POST -Body $body -ContentType "application/json" -UseBasicParsing -TimeoutSec 5
     if ($r.StatusCode -eq 200) {
         $json = $r.Content | ConvertFrom-Json

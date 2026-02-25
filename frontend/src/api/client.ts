@@ -1,5 +1,14 @@
 const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const TOKEN_KEY = 'smart_lpr_token';
+const DEFAULT_RETRY_TIMES = Math.max(0, Number(import.meta.env.VITE_API_RETRY_TIMES || 2));
+const DEFAULT_RETRY_BASE_MS = Math.max(50, Number(import.meta.env.VITE_API_RETRY_BASE_MS || 250));
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
+
+let authFailureHandler: (() => void) | null = null;
+
+export function registerAuthFailureHandler(handler: (() => void) | null) {
+    authFailureHandler = handler;
+}
 
 type ApiErrorPayload = {
     success?: boolean;
@@ -30,6 +39,12 @@ export interface AuthSnapshot {
     dataScope: DataScope;
 }
 
+type RequestOptions = RequestInit & {
+    retryTimes?: number;
+    retryBaseMs?: number;
+    skipAuthFailureHandler?: boolean;
+};
+
 function getStoredToken(): string | null {
     return localStorage.getItem(TOKEN_KEY);
 }
@@ -56,30 +71,69 @@ async function buildHeaders(options?: RequestInit): Promise<Record<string, strin
     };
 }
 
-async function request<T = any>(endpoint: string, options?: RequestInit): Promise<T> {
+function sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function shouldRetry(status: number | null, error: unknown, attempt: number, retryTimes: number): boolean {
+    if (attempt >= retryTimes) return false;
+    if (status !== null) return RETRYABLE_STATUS.has(status);
+    if (error instanceof DOMException && error.name === 'AbortError') return false;
+    return true;
+}
+
+async function request<T = any>(endpoint: string, options?: RequestOptions): Promise<T> {
     const url = endpoint.startsWith('http') ? endpoint : `${BACKEND_URL}${endpoint}`;
+    const retryTimes = options?.retryTimes ?? DEFAULT_RETRY_TIMES;
+    const retryBaseMs = options?.retryBaseMs ?? DEFAULT_RETRY_BASE_MS;
+    let lastError: unknown;
 
-    const res = await fetch(url, {
-        ...options,
-        headers: await buildHeaders(options)
-    });
-
-    if (!res.ok) {
-        let payload: ApiErrorPayload | null = null;
+    for (let attempt = 0; attempt <= retryTimes; attempt++) {
         try {
-            payload = await res.json();
-        } catch (_err) {
-            payload = null;
-        }
-        const message = payload?.message || `请求失败 (${res.status})`;
-        throw new Error(message);
-    }
+            const res = await fetch(url, {
+                ...options,
+                headers: await buildHeaders(options)
+            });
 
-    const contentType = res.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-        return res.json();
+            if (!res.ok) {
+                let payload: ApiErrorPayload | null = null;
+                try {
+                    payload = await res.json();
+                } catch (_err) {
+                    payload = null;
+                }
+
+                if (res.status === 401) {
+                    clearStoredToken();
+                    if (!options?.skipAuthFailureHandler && authFailureHandler) {
+                        authFailureHandler();
+                    }
+                    throw new Error(payload?.message || '登录状态已过期，请重新登录');
+                }
+
+                const message = payload?.message || `请求失败 (${res.status})`;
+                const httpError = new Error(message);
+                if (!shouldRetry(res.status, httpError, attempt, retryTimes)) {
+                    throw httpError;
+                }
+                await sleep(retryBaseMs * Math.pow(2, attempt));
+                continue;
+            }
+
+            const contentType = res.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                return res.json();
+            }
+            return (res.blob() as unknown) as T;
+        } catch (error) {
+            lastError = error;
+            if (!shouldRetry(null, error, attempt, retryTimes)) {
+                throw error;
+            }
+            await sleep(retryBaseMs * Math.pow(2, attempt));
+        }
     }
-    return (res.blob() as unknown) as T;
+    throw lastError instanceof Error ? lastError : new Error('请求失败');
 }
 
 // 获取带认证信息的请求头辅助函数（兼容旧调用）
@@ -117,7 +171,7 @@ export const apiClient = {
         return payload.data;
     },
 
-    async getHistory(start?: number, end?: number, type?: string, groupBy?: string) {
+    async getHistory(start?: number, end?: number, type?: string, groupBy?: string, options?: RequestOptions) {
         let url = '/api/plates';
         const params = new URLSearchParams();
         if (start && end) {
@@ -128,7 +182,7 @@ export const apiClient = {
         if (groupBy) params.append('groupBy', groupBy);
         const queryString = params.toString();
         if (queryString) url += `?${queryString}`;
-        return request(url);
+        return request(url, options);
     },
 
     async savePlate(plate: any) {
@@ -208,8 +262,8 @@ export const apiClient = {
         });
     },
 
-    async getAlarms() {
-        return request('/api/alarms');
+    async getAlarms(options?: RequestOptions) {
+        return request('/api/alarms', options);
     },
 
     async markAlarmAsRead(id: number) {

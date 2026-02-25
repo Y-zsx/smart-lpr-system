@@ -35,7 +35,7 @@ export const BlacklistManager: React.FC<{ onClose: () => void }> = ({ onClose })
         setNewItem({ plate_number: '', reason: '', severity: 'high' });
         fetchList();
         // 刷新告警列表
-        useAlarmStore.getState().fetchAlarms();
+        void useAlarmStore.getState().fetchAlarms().catch(() => undefined);
     };
 
     const handleDelete = async (id: number) => {
@@ -49,7 +49,7 @@ export const BlacklistManager: React.FC<{ onClose: () => void }> = ({ onClose })
         fetchList();
         toast.success('黑名单已删除');
         // 立即刷新告警列表
-        useAlarmStore.getState().fetchAlarms();
+        void useAlarmStore.getState().fetchAlarms().catch(() => undefined);
     };
 
     const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -71,7 +71,7 @@ export const BlacklistManager: React.FC<{ onClose: () => void }> = ({ onClose })
                 fetchList();
                 toast.success(`成功导入 ${data.length} 条黑名单记录`);
                 // 刷新告警列表
-                useAlarmStore.getState().fetchAlarms();
+                void useAlarmStore.getState().fetchAlarms().catch(() => undefined);
             }
         };
         reader.readAsText(file);

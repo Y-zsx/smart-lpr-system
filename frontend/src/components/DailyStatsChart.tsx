@@ -4,6 +4,7 @@ import * as echarts from 'echarts';
 import { apiClient } from '../api/client';
 import { BarChart3 } from 'lucide-react';
 import { usePlateStore } from '../store/plateStore';
+import { usePlateHistory } from '@/hooks/usePlateHistory';
 
 interface DailyStat {
     date: string;
@@ -18,6 +19,7 @@ export const DailyStatsChart: React.FC<DailyStatsChartProps> = React.memo(({ dat
     const [stats, setStats] = useState<DailyStat[]>([]);
     const [loading, setLoading] = useState(true);
     const { settings } = usePlateStore();
+    const { data: allGroups } = usePlateHistory({ groupBy: 'plate' });
 
     useEffect(() => {
         const fetchStats = async () => {
@@ -45,12 +47,10 @@ export const DailyStatsChart: React.FC<DailyStatsChartProps> = React.memo(({ dat
                         setStats(data);
                     } else {
                         // 总量模式：显示所有历史数据的累计趋势
-                        // 获取所有数据并按日期分组统计
-                        const allGroups = await apiClient.getHistory(undefined, undefined, undefined, 'plate');
                         const dateMap = new Map<string, number>();
                         
                         // 按日期统计不重复车牌数
-                        (allGroups as any[]).forEach((group: any) => {
+                        allGroups.forEach((group) => {
                             const dateStr = new Date(group.firstSeen).toISOString().split('T')[0];
                             if (!dateMap.has(dateStr)) {
                                 dateMap.set(dateStr, 0);
@@ -83,7 +83,7 @@ export const DailyStatsChart: React.FC<DailyStatsChartProps> = React.memo(({ dat
         };
 
         fetchStats();
-    }, [date, settings.isDemoMode]);
+    }, [date, settings.isDemoMode, allGroups]);
 
     const getOption = () => {
         return {

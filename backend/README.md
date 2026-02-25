@@ -16,6 +16,7 @@ npm install
 
 ```env
 PORT=8000
+JWT_SECRET=replace_with_a_strong_random_secret
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root

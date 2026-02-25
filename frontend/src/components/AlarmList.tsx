@@ -20,9 +20,34 @@ export const AlarmList: React.FC = React.memo(() => {
     const [selectedPlate, setSelectedPlate] = useState<string | null>(null);
 
     useEffect(() => {
-        fetchAlarms();
-        const interval = setInterval(fetchAlarms, 5000); // Poll every 5s
-        return () => clearInterval(interval);
+        let stopped = false;
+        let timer: number | undefined;
+        let failureCount = 0;
+        const run = async () => {
+            if (stopped || document.hidden) return;
+            try {
+                await fetchAlarms();
+                failureCount = 0;
+            } catch (_error) {
+                failureCount += 1;
+            } finally {
+                if (stopped) return;
+                const delay = Math.min(30000, 5000 * Math.max(1, failureCount));
+                timer = window.setTimeout(run, delay);
+            }
+        };
+        void run();
+        const onVisible = () => {
+            if (!document.hidden) {
+                void fetchAlarms();
+            }
+        };
+        document.addEventListener('visibilitychange', onVisible);
+        return () => {
+            stopped = true;
+            if (timer) window.clearTimeout(timer);
+            document.removeEventListener('visibilitychange', onVisible);
+        };
     }, [fetchAlarms]);
 
     // 按车牌号码分组

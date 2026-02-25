@@ -6,6 +6,7 @@ import { PlateGroup } from '../types/plate';
 import { PlateDetail } from './PlateDetail';
 import { useToastContext } from '../contexts/ToastContext';
 import { arePlateGroupsEqual } from '../utils/dataComparison';
+import { usePlateHistory } from '@/hooks/usePlateHistory';
 
 interface PlateListProps {
     date?: string; // 可选的日期参数，undefined 表示总量模式
@@ -20,56 +21,26 @@ export const PlateList: React.FC<PlateListProps> = React.memo(({ date }) => {
     const [selectedGroup, setSelectedGroup] = useState<PlateGroup | null>(null);
     const [loading, setLoading] = useState(true);
     const isInitialLoad = useRef(true);
+    const isToday = date === new Date().toISOString().split('T')[0];
+    const { data: historyGroups, loading: historyLoading, refresh } = usePlateHistory({
+        date,
+        groupBy: 'plate',
+        autoRefresh: isToday,
+        refreshIntervalMs: 5000
+    });
 
-    // 从 API 获取分组数据
     useEffect(() => {
-        const fetchGroups = async () => {
-            // 只在首次加载时显示loading，后续刷新静默进行
-            if (isInitialLoad.current) {
-                setLoading(true);
-            }
-            
-            try {
-                const start = date ? new Date(date).setHours(0, 0, 0, 0) : undefined;
-                const end = date ? new Date(date).setHours(23, 59, 59, 999) : undefined;
-                
-                const groups = await apiClient.getHistory(start, end, undefined, 'plate');
-                const newGroups = Array.isArray(groups) ? groups : [];
-                
-                // 只在数据真正变化时更新
-                setPlateGroups(prev => {
-                    if (arePlateGroupsEqual(prev, newGroups)) {
-                        return prev; // 返回旧引用，避免重新渲染
-                    }
-                    return newGroups;
-                });
-            } catch (error) {
-                console.error('获取车牌分组数据失败:', error);
-                if (isInitialLoad.current) {
-                    setPlateGroups([]);
-                }
-            } finally {
-                if (isInitialLoad.current) {
-                    setLoading(false);
-                    isInitialLoad.current = false;
-                }
-            }
-        };
-
-        fetchGroups();
-        
-        // 如果是今天，每5秒刷新一次
-        const isToday = date === new Date().toISOString().split('T')[0];
-        let interval: number;
-        if (isToday) {
-            interval = window.setInterval(fetchGroups, 5000);
+        if (!historyLoading && isInitialLoad.current) {
+            setLoading(false);
+            isInitialLoad.current = false;
         }
-
-        return () => {
-            if (interval) clearInterval(interval);
-            isInitialLoad.current = true; // 重置初始加载状态
-        };
-    }, [date]);
+        setPlateGroups(prev => {
+            if (arePlateGroupsEqual(prev, historyGroups)) {
+                return prev;
+            }
+            return historyGroups;
+        });
+    }, [historyGroups, historyLoading]);
 
     // 基于搜索词和置信度阈值过滤车牌
     const filteredGroups = plateGroups.filter(group =>
@@ -216,19 +187,7 @@ export const PlateList: React.FC<PlateListProps> = React.memo(({ date }) => {
                     onClose={() => setSelectedGroup(null)}
                     onDeleted={() => {
                         setSelectedGroup(null);
-                        // 刷新列表数据
-                        const fetchGroups = async () => {
-                            try {
-                                const start = date ? new Date(date).setHours(0, 0, 0, 0) : undefined;
-                                const end = date ? new Date(date).setHours(23, 59, 59, 999) : undefined;
-                                
-                                const groups = await apiClient.getHistory(start, end, undefined, 'plate');
-                                setPlateGroups(Array.isArray(groups) ? groups : []);
-                            } catch (error) {
-                                console.error('获取车牌分组数据失败:', error);
-                            }
-                        };
-                        fetchGroups();
+                        void refresh();
                     }}
                 />
             )}

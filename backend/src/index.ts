@@ -2,14 +2,16 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import rateLimit from 'express-rate-limit';
 import apiRoutes from './routes/api';
-import { testConnection, initDatabase } from './config/database';
+import { pool, testConnection, initDatabase } from './config/database';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 8000;
+const AI_SERVICE_URL = (process.env.AI_SERVICE_URL || 'http://localhost:8001').trim().replace(/\/$/, '');
 
 // Request logging middleware - Place this FIRST
 app.use((req, res, next) => {
@@ -27,26 +29,58 @@ app.use(cors({
   credentials: true
 }));
 app.use(express.json({ limit: '2mb' }));
+app.use(rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.GLOBAL_RATE_LIMIT_PER_MINUTE || 240),
+  standardHeaders: true,
+  legacyHeaders: false
+}));
 
 // Serve static uploads
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Health check
+// Basic root check
 app.get('/', (req: Request, res: Response) => {
   res.send('Smart LPR System Backend is running');
 });
 
-// Request logging middleware
-// app.use((req, res, next) => {
-//   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-//   next();
-// });
+// Health check for monitoring & LB probes
+app.get('/api/health', async (_req: Request, res: Response) => {
+  const health = {
+    service: 'backend',
+    status: 'ok' as 'ok' | 'degraded',
+    timestamp: Date.now(),
+    checks: {
+      database: false,
+      aiService: false
+    }
+  };
 
-// Request logging middleware
-// app.use((req, res, next) => {
-//   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-//   next();
-// });
+  try {
+    const connection = await pool.getConnection();
+    await connection.ping();
+    connection.release();
+    health.checks.database = true;
+  } catch (_error) {
+    health.status = 'degraded';
+  }
+
+  try {
+    const response = await fetch(`${AI_SERVICE_URL}/health`, { method: 'GET' });
+    health.checks.aiService = response.ok;
+    if (!response.ok) {
+      health.status = 'degraded';
+    }
+  } catch (_error) {
+    health.status = 'degraded';
+  }
+
+  if (health.status === 'ok') {
+    res.status(200).json(health);
+    return;
+  }
+  res.status(503).json(health);
+});
 
 // API Routes
 app.use('/api', apiRoutes);

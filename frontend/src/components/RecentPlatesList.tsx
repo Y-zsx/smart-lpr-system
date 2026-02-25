@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Clock, MapPin, Camera } from 'lucide-react';
-import { apiClient } from '../api/client';
 import { PlateGroup } from '../types/plate';
 import { usePlateStore } from '../store/plateStore';
 import { arePlateGroupsEqual } from '../utils/dataComparison';
+import { usePlateHistory } from '@/hooks/usePlateHistory';
 
 interface RecentPlatesListProps {
     date?: string; // 可选的日期参数，undefined 表示总量模式
@@ -15,6 +15,13 @@ export const RecentPlatesList: React.FC<RecentPlatesListProps> = React.memo(({ d
     const [loading, setLoading] = useState(true);
     const { settings } = usePlateStore();
     const isInitialLoad = useRef(true);
+    const isToday = date === new Date().toISOString().split('T')[0];
+    const { data: plateGroups, loading: historyLoading } = usePlateHistory({
+        date,
+        groupBy: 'plate',
+        autoRefresh: isToday && !settings.isDemoMode,
+        refreshIntervalMs: 5000
+    });
 
     useEffect(() => {
         const fetchRecentPlates = async () => {
@@ -44,20 +51,7 @@ export const RecentPlatesList: React.FC<RecentPlatesListProps> = React.memo(({ d
                         await new Promise(resolve => setTimeout(resolve, 500));
                     }
                 } else {
-                    let start: number | undefined;
-                    let end: number | undefined;
-                    
-                    if (date) {
-                        // 日期模式：获取指定日期的数据
-                        start = new Date(date).setHours(0, 0, 0, 0);
-                        end = new Date(date).setHours(23, 59, 59, 999);
-                    }
-                    
-                    // 获取分组数据
-                    const groups = await apiClient.getHistory(start, end, undefined, 'plate');
-                    
-                    // 按最后识别时间排序，取最近的
-                    newPlates = (groups as PlateGroup[])
+                    newPlates = plateGroups
                         .sort((a, b) => b.lastSeen - a.lastSeen)
                         .slice(0, limit);
                 }
@@ -83,19 +77,11 @@ export const RecentPlatesList: React.FC<RecentPlatesListProps> = React.memo(({ d
         };
 
         fetchRecentPlates();
-        
-        // 如果是今天，每5秒刷新一次
-        const isToday = date === new Date().toISOString().split('T')[0];
-        let interval: number;
-        if (isToday && !settings.isDemoMode) {
-            interval = window.setInterval(fetchRecentPlates, 5000);
-        }
 
         return () => {
-            if (interval) clearInterval(interval);
             isInitialLoad.current = true; // 重置初始加载状态
         };
-    }, [date, limit, settings.isDemoMode]);
+    }, [limit, settings.isDemoMode, plateGroups, historyLoading]);
 
     if (loading) return (
         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col h-full">

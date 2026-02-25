@@ -1,3 +1,12 @@
+# Basic dependency checks
+$missing = @()
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { $missing += "npm" }
+if (-not (Get-Command python -ErrorAction SilentlyContinue)) { $missing += "python" }
+if ($missing.Count -gt 0) {
+    Write-Error "Missing required tools: $($missing -join ', '). Please install them first."
+    exit 1
+}
+
 # Start AI Service
 Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd ai-service; Write-Host 'Starting AI Service on port 8001...'; pip install -r requirements.txt; python -m app.main"
 

@@ -7,12 +7,13 @@ export function notFoundHandler(req: Request, _res: Response, next: NextFunction
 }
 
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction) {
+  const isProd = process.env.NODE_ENV === 'production';
   if (err instanceof AppError) {
     res.status(err.statusCode).json({
       success: false,
       code: err.code,
-      message: err.message,
-      details: err.details ?? null
+      message: isProd && err.statusCode >= 500 ? 'Internal server error' : err.message,
+      details: isProd ? null : (err.details ?? null)
     });
     return;
   }
@@ -44,7 +45,7 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
   res.status(500).json({
     success: false,
     code: 'INTERNAL_ERROR',
-    message,
+    message: isProd ? 'Internal server error' : message,
     details: null
   });
 }

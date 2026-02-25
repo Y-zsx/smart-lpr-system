@@ -34,6 +34,13 @@
 - 后端服务：`http://localhost:8000`
 - 前端应用：`http://localhost:5173`
 
+### 一键启动（Linux/macOS）
+
+```bash
+chmod +x ./start-dev.sh
+./start-dev.sh
+```
+
 ### 手动启动
 
 #### 1. 启动 AI 服务
@@ -54,6 +61,8 @@ cp .env.example .env
 npm install
 npm run dev
 ```
+
+> 必填安全配置：`JWT_SECRET`（生产环境必须设置强随机值，未设置将拒绝启动）。
 
 **数据库配置示例**：
 ```env

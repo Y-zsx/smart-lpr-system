@@ -1,18 +1,19 @@
-import { Request, Response } from 'express';
-import { getBlacklist as getBlacklistFromDb, addBlacklist as addBlacklistToDb, deleteBlacklist as deleteBlacklistFromDb, getAllPlateRecords, createAlarmForBlacklist, getPlates, deleteAlarmsByBlacklistId, getBlacklistItem, deleteAlarmsByPlateNumber } from '../../utils/db';
-import { BlacklistItem, PlateRecord } from '../../types';
+import { NextFunction, Request, Response } from 'express';
+import { getBlacklist as getBlacklistFromDb, addBlacklist as addBlacklistToDb, deleteBlacklist as deleteBlacklistFromDb, getAllPlateRecords, createAlarmForBlacklist, deleteAlarmsByBlacklistId, getBlacklistItem, deleteAlarmsByPlateNumber } from '../../utils/db';
+import { BlacklistItem } from '../../types';
+import { AppError } from '../../utils/AppError';
 
-export const getBlacklist = async (req: Request, res: Response) => {
+export const getBlacklist = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const blacklist = await getBlacklistFromDb();
         res.json(blacklist);
     } catch (error) {
         console.error('Error fetching blacklist:', error);
-        res.status(500).json({ message: 'Error fetching blacklist' });
+        next(new AppError('Error fetching blacklist', 500, 'BLACKLIST_FETCH_FAILED'));
     }
 };
 
-export const addBlacklist = async (req: Request, res: Response) => {
+export const addBlacklist = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const data = req.body;
         const items: Omit<BlacklistItem, 'id' | 'created_at'>[] = Array.isArray(data) ? data : [data];
@@ -30,25 +31,6 @@ export const addBlacklist = async (req: Request, res: Response) => {
                         await createAlarmForBlacklist(record, newItem);
                         createdCount++;
                     }
-                    const oldPlates = await getPlates();
-                    const matchingPlates = oldPlates.filter(plate => plate.number === item.plate_number);
-                    for (const plate of matchingPlates) {
-                        const record: PlateRecord = {
-                            id: plate.id,
-                            plateNumber: plate.number,
-                            plateType: plate.type,
-                            confidence: plate.confidence,
-                            timestamp: plate.timestamp,
-                            cameraId: undefined,
-                            cameraName: plate.location,
-                            location: plate.location,
-                            imageUrl: plate.imageUrl,
-                            rect: plate.rect,
-                            createdAt: plate.timestamp
-                        };
-                        await createAlarmForBlacklist(record, newItem);
-                        createdCount++;
-                    }
                     if (createdCount > 0) {
                         console.log(`为黑名单车牌 ${item.plate_number} 创建了 ${createdCount} 条告警`);
                     }
@@ -61,15 +43,15 @@ export const addBlacklist = async (req: Request, res: Response) => {
         res.json(Array.isArray(data) ? newItems : newItems[0]);
     } catch (error) {
         console.error('Error adding to blacklist:', error);
-        res.status(500).json({ message: 'Error adding to blacklist' });
+        next(new AppError('Error adding to blacklist', 500, 'BLACKLIST_ADD_FAILED'));
     }
 };
 
-export const deleteBlacklist = async (req: Request, res: Response) => {
+export const deleteBlacklist = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { id } = req.query;
         if (!id) {
-            res.status(400).json({ message: 'ID is required' });
+            next(new AppError('ID is required', 400, 'VALIDATION_ERROR'));
             return;
         }
         const blacklistId = Number(id);
@@ -80,12 +62,12 @@ export const deleteBlacklist = async (req: Request, res: Response) => {
         }
         const deleted = await deleteBlacklistFromDb(blacklistId);
         if (!deleted) {
-            res.status(404).json({ message: 'Item not found' });
+            next(new AppError('Item not found', 404, 'BLACKLIST_NOT_FOUND'));
             return;
         }
         res.json({ success: true });
     } catch (error) {
         console.error('Error deleting from blacklist:', error);
-        res.status(500).json({ message: 'Error deleting from blacklist' });
+        next(new AppError('Error deleting from blacklist', 500, 'BLACKLIST_DELETE_FAILED'));
     }
 };

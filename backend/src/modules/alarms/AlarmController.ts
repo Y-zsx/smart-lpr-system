@@ -1,9 +1,10 @@
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import { getAlarms as getAlarmsFromDb, updateAlarmStatus, deleteAlarm as deleteAlarmFromDb, deleteAlarmsByPlateNumber } from '../../utils/db';
 import { AuthenticatedRequest } from '../auth';
 import { filterItemsByScope } from '../../utils/dataScope';
+import { AppError } from '../../utils/AppError';
 
-export const getAlarms = async (req: AuthenticatedRequest, res: Response) => {
+export const getAlarms = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const alarms = await getAlarmsFromDb();
         const scoped = filterItemsByScope(
@@ -15,59 +16,59 @@ export const getAlarms = async (req: AuthenticatedRequest, res: Response) => {
         res.json(scoped);
     } catch (error) {
         console.error('Error fetching alarms:', error);
-        res.status(500).json({ message: 'Error fetching alarms' });
+        next(new AppError('Error fetching alarms', 500, 'ALARMS_FETCH_FAILED'));
     }
 };
 
-export const markAlarmAsRead = async (req: Request, res: Response) => {
+export const markAlarmAsRead = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { id } = req.params;
         if (!id || isNaN(Number(id))) {
-            res.status(400).json({ message: 'Invalid alarm ID' });
+            next(new AppError('Invalid alarm ID', 400, 'VALIDATION_ERROR'));
             return;
         }
         const success = await updateAlarmStatus(Number(id), true);
         if (success) {
             res.json({ success: true });
         } else {
-            res.status(404).json({ message: 'Alarm not found' });
+            next(new AppError('Alarm not found', 404, 'ALARM_NOT_FOUND'));
         }
     } catch (error) {
         console.error('Error marking alarm as read:', error);
-        res.status(500).json({ message: 'Error updating alarm status' });
+        next(new AppError('Error updating alarm status', 500, 'ALARM_UPDATE_FAILED'));
     }
 };
 
-export const deleteAlarm = async (req: Request, res: Response) => {
+export const deleteAlarm = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { id } = req.params;
         if (!id || isNaN(Number(id))) {
-            res.status(400).json({ message: 'Invalid alarm ID' });
+            next(new AppError('Invalid alarm ID', 400, 'VALIDATION_ERROR'));
             return;
         }
         const success = await deleteAlarmFromDb(Number(id));
         if (success) {
             res.json({ success: true });
         } else {
-            res.status(404).json({ message: 'Alarm not found' });
+            next(new AppError('Alarm not found', 404, 'ALARM_NOT_FOUND'));
         }
     } catch (error) {
         console.error('Error deleting alarm:', error);
-        res.status(500).json({ message: 'Error deleting alarm' });
+        next(new AppError('Error deleting alarm', 500, 'ALARM_DELETE_FAILED'));
     }
 };
 
-export const deleteAlarmsByPlate = async (req: Request, res: Response) => {
+export const deleteAlarmsByPlate = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { plateNumber } = req.params;
         if (typeof plateNumber !== 'string') {
-            res.status(400).json({ message: 'Invalid plate number' });
+            next(new AppError('Invalid plate number', 400, 'VALIDATION_ERROR'));
             return;
         }
         const deletedCount = await deleteAlarmsByPlateNumber(plateNumber);
         res.json({ success: true, deletedCount });
     } catch (error) {
         console.error('Error deleting alarms by plate:', error);
-        res.status(500).json({ message: 'Error deleting alarms' });
+        next(new AppError('Error deleting alarms', 500, 'ALARMS_DELETE_FAILED'));
     }
 };

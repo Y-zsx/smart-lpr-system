@@ -1,20 +1,21 @@
-import { Request, Response } from 'express';
+import { NextFunction, Request, Response } from 'express';
 import { getCamerasFromDb, saveCameraToDb, deleteCameraFromDb, Camera } from '../../utils/db';
 import { AuthenticatedRequest } from '../auth';
 import { filterItemsByScope } from '../../utils/dataScope';
+import { AppError } from '../../utils/AppError';
 
-export const getCameras = async (req: AuthenticatedRequest, res: Response) => {
+export const getCameras = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const cameras = await getCamerasFromDb();
         const scoped = filterItemsByScope(cameras, c => c.id, c => c.regionCode, req.dataScope);
         res.json(scoped);
     } catch (error) {
         console.error('Error fetching cameras:', error);
-        res.status(500).json({ message: 'Error fetching cameras' });
+        next(new AppError('Error fetching cameras', 500, 'CAMERAS_FETCH_FAILED'));
     }
 };
 
-export const addCamera = async (req: Request, res: Response) => {
+export const addCamera = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const cameraData: Omit<Camera, 'id' | 'status'> = req.body;
         const newCamera: Camera = {
@@ -27,18 +28,18 @@ export const addCamera = async (req: Request, res: Response) => {
         res.json(savedCamera);
     } catch (error) {
         console.error('Error adding camera:', error);
-        res.status(500).json({ message: 'Error adding camera' });
+        next(new AppError('Error adding camera', 500, 'CAMERA_CREATE_FAILED'));
     }
 };
 
-export const updateCamera = async (req: Request, res: Response) => {
+export const updateCamera = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { id } = req.params;
         const cameraData: Partial<Camera> = req.body;
         const cameras = await getCamerasFromDb();
         const camera = cameras.find(c => c.id === id);
         if (!camera) {
-            res.status(404).json({ message: 'Camera not found' });
+            next(new AppError('Camera not found', 404, 'CAMERA_NOT_FOUND'));
             return;
         }
         const updatedCamera = { ...camera, ...cameraData };
@@ -46,21 +47,21 @@ export const updateCamera = async (req: Request, res: Response) => {
         res.json(updatedCamera);
     } catch (error) {
         console.error('Error updating camera:', error);
-        res.status(500).json({ message: 'Error updating camera' });
+        next(new AppError('Error updating camera', 500, 'CAMERA_UPDATE_FAILED'));
     }
 };
 
-export const deleteCamera = async (req: Request, res: Response) => {
+export const deleteCamera = async (req: Request, res: Response, next: NextFunction) => {
     try {
         const { id } = req.query;
         if (!id || typeof id !== 'string') {
-            res.status(400).json({ message: 'Camera ID is required' });
+            next(new AppError('Camera ID is required', 400, 'VALIDATION_ERROR'));
             return;
         }
         await deleteCameraFromDb(id);
         res.json({ message: 'Camera deleted successfully' });
     } catch (error) {
         console.error('Error deleting camera:', error);
-        res.status(500).json({ message: 'Error deleting camera' });
+        next(new AppError('Error deleting camera', 500, 'CAMERA_DELETE_FAILED'));
     }
 };

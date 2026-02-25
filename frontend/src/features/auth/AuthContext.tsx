@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { apiClient, AuthRole, AuthSnapshot, AuthUser } from '@/api/client';
+import { apiClient, AuthRole, AuthSnapshot, AuthUser, registerAuthFailureHandler } from '@/api/client';
 
 interface AuthState {
     status: 'checking' | 'authenticated' | 'unauthenticated';
@@ -55,6 +55,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     useEffect(() => {
         refresh();
     }, [refresh]);
+
+    useEffect(() => {
+        registerAuthFailureHandler(() => {
+            setState({
+                status: 'unauthenticated',
+                user: null,
+                roles: [],
+                permissions: [],
+                dataScope: defaultDataScope
+            });
+        });
+        return () => registerAuthFailureHandler(null);
+    }, []);
 
     const login = useCallback(async (username: string, password: string) => {
         const payload = await apiClient.login(username, password);

@@ -14,6 +14,7 @@ python -m app.main
 ## 环境变量
 
 - `AI_CORS_ORIGINS`：允许跨域来源，逗号分隔（默认：`http://localhost:5173,http://localhost:3000`）
+- `PORT`：服务端口（默认：`8001`）
 - `AI_ENABLE_PROVINCE_CONFLICT_RESOLVE`：是否启用“同尾号省份冲突消解”（默认：`false`）
 - `AI_ENABLE_TEMPORAL_PROVINCE_VOTE`：是否启用“跨帧省份投票纠偏”（默认：`false`）
 - `AI_NON_CN_MIN_CONFIDENCE_FLOOR`：非标准格式候选的最低置信度下限（默认：`0.75`，取值范围 `0~1`）
@@ -22,7 +23,7 @@ python -m app.main
   - `balanced`：原图 + 轻增强（低照补偿）
   - `aggressive`：原图 + 强增强 + 缩放 + 旋转（更激进，可能引入误检）
 - `AI_BOX_IOU_MERGE_THRESHOLD`：同位置候选合并 IoU 阈值（默认：`0.35`，可调低到 `0.2` 降低“一车多牌”）
-- 示例：
+- 示例（Windows PowerShell）：
 
 ```bash
 set AI_CORS_ORIGINS=http://localhost:5173,https://your-domain.com
@@ -31,6 +32,19 @@ set AI_ENABLE_TEMPORAL_PROVINCE_VOTE=false
 set AI_NON_CN_MIN_CONFIDENCE_FLOOR=0.75
 set AI_VARIANT_PROFILE=native
 set AI_BOX_IOU_MERGE_THRESHOLD=0.2
+python -m app.main
+```
+
+示例（Linux/macOS）：
+
+```bash
+export AI_CORS_ORIGINS="http://localhost:5173,https://your-domain.com"
+export AI_ENABLE_PROVINCE_CONFLICT_RESOLVE=false
+export AI_ENABLE_TEMPORAL_PROVINCE_VOTE=false
+export AI_NON_CN_MIN_CONFIDENCE_FLOOR=0.75
+export AI_VARIANT_PROFILE=native
+export AI_BOX_IOU_MERGE_THRESHOLD=0.2
+export PORT=8001
 python -m app.main
 ```
 

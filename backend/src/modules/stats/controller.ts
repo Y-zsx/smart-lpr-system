@@ -1,10 +1,11 @@
-import { Response } from 'express';
+import { NextFunction, Response } from 'express';
 import { getPlateGroups } from '../../utils/db';
 import { DashboardStats } from '../../types';
 import { AuthenticatedRequest } from '../auth';
 import { filterPlateGroupsByScope } from '../../utils/dataScope';
+import { AppError } from '../../utils/AppError';
 
-export const getDashboardStats = async (req: AuthenticatedRequest, res: Response) => {
+export const getDashboardStats = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const { date } = req.query;
         let selectedGroups;
@@ -109,11 +110,11 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
         res.json(stats);
     } catch (error) {
         console.error('Error fetching dashboard stats:', error);
-        res.status(500).json({ message: 'Error fetching dashboard stats' });
+        next(new AppError('Error fetching dashboard stats', 500, 'DASHBOARD_STATS_FAILED'));
     }
 };
 
-export const getDailyStats = async (req: AuthenticatedRequest, res: Response) => {
+export const getDailyStats = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const { end } = req.query;
         const endDate = end ? new Date(Number(end)) : new Date();
@@ -144,11 +145,11 @@ export const getDailyStats = async (req: AuthenticatedRequest, res: Response) =>
         res.json(result);
     } catch (error) {
         console.error('Error fetching daily stats:', error);
-        res.status(500).json({ message: 'Error fetching daily stats' });
+        next(new AppError('Error fetching daily stats', 500, 'DAILY_STATS_FAILED'));
     }
 };
 
-export const getRegionStats = async (req: AuthenticatedRequest, res: Response) => {
+export const getRegionStats = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
         const { range, date } = req.query;
         let groups;
@@ -185,6 +186,6 @@ export const getRegionStats = async (req: AuthenticatedRequest, res: Response) =
         res.json(stats);
     } catch (error) {
         console.error('Error fetching region stats:', error);
-        res.status(500).json({ message: 'Error fetching region stats' });
+        next(new AppError('Error fetching region stats', 500, 'REGION_STATS_FAILED'));
     }
 };

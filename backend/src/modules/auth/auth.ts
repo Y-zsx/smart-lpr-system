@@ -17,11 +17,19 @@ export interface AuthenticatedRequest extends Request {
   dataScope?: AccessContext['dataScope'];
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'smart-lpr-dev-secret';
+const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '8h';
 
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET is required. Refuse to start with default/empty secret.');
+}
+
+function getJwtSecret(): string {
+  return JWT_SECRET as string;
+}
+
 export function signToken(user: AuthUser): string {
-  return jwt.sign(user, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN } as SignOptions);
+  return jwt.sign(user, getJwtSecret(), { expiresIn: JWT_EXPIRES_IN } as SignOptions);
 }
 
 function parseBearerToken(authHeader?: string): string | null {
@@ -31,32 +39,33 @@ function parseBearerToken(authHeader?: string): string | null {
   return token;
 }
 
-export function requireAuth(req: AuthenticatedRequest, _res: Response, next: NextFunction) {
+export async function requireAuth(req: AuthenticatedRequest, _res: Response, next: NextFunction) {
   const token = parseBearerToken(req.headers.authorization);
   if (!token) {
     next(new AppError('Unauthorized: missing token', 401, 'UNAUTHORIZED'));
     return;
   }
 
+  let payload: JwtPayload & AuthUser;
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as JwtPayload & AuthUser;
+    payload = jwt.verify(token, getJwtSecret()) as unknown as JwtPayload & AuthUser;
+  } catch (_error) {
+    next(new AppError('Unauthorized: invalid or expired token', 401, 'INVALID_TOKEN'));
+    return;
+  }
+  try {
     req.user = {
       id: payload.id,
       username: payload.username,
       role: payload.role
     };
-    getUserAccessContext(payload.id)
-      .then((accessContext) => {
-        req.accessContext = accessContext;
-        req.dataScope = accessContext.dataScope;
-        next();
-      })
-      .catch((error) => {
-        console.error('[Auth] load access context failed:', error);
-        next(new AppError('Failed to load access context', 500, 'AUTH_CONTEXT_ERROR'));
-      });
-  } catch (_error) {
-    next(new AppError('Unauthorized: invalid or expired token', 401, 'INVALID_TOKEN'));
+    const accessContext = await getUserAccessContext(payload.id);
+    req.accessContext = accessContext;
+    req.dataScope = accessContext.dataScope;
+    next();
+  } catch (error) {
+    console.error('[Auth] load access context failed:', error);
+    next(new AppError('Failed to load access context', 500, 'AUTH_CONTEXT_ERROR'));
   }
 }
 

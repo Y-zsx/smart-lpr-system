@@ -16,135 +16,42 @@ export const getPlates = async (filters?: {
   end?: number;
   type?: string;
 }): Promise<LicensePlate[]> => {
-  const connection = await pool.getConnection();
-  try {
-    let query = 'SELECT * FROM `plates` WHERE 1=1';
-    const params: any[] = [];
-
-    if (filters?.start) {
-      query += ' AND `timestamp` >= ?';
-      params.push(filters.start);
-    }
-    if (filters?.end) {
-      query += ' AND `timestamp` <= ?';
-      params.push(filters.end);
-    }
-    if (filters?.type) {
-      query += ' AND `type` = ?';
-      params.push(filters.type);
-    }
-
-    query += ' ORDER BY `timestamp` DESC';
-
-    const [rows] = await connection.execute<RowDataPacket[]>(query, params);
-    
-    return rows.map((row: RowDataPacket) => ({
-      id: row.id,
-      number: row.number,
-      type: row.type,
-      confidence: parseFloat(row.confidence),
-      timestamp: parseInt(row.timestamp),
-      imageUrl: row.image_url || undefined,
-      location: row.location || undefined,
-      rect: row.rect_x !== null ? {
-        x: row.rect_x,
-        y: row.rect_y,
-        w: row.rect_w,
-        h: row.rect_h
-      } : undefined,
-      saved: row.saved === 1
-    }));
-  } finally {
-    connection.release();
-  }
+  const records = await getAllPlateRecords({
+    start: filters?.start,
+    end: filters?.end,
+    type: filters?.type
+  });
+  return records.map((record) => ({
+    id: record.id,
+    number: record.plateNumber,
+    type: record.plateType,
+    confidence: record.confidence,
+    timestamp: record.timestamp,
+    imageUrl: record.imageUrl,
+    location: record.location,
+    rect: record.rect,
+    saved: true,
+    cameraId: record.cameraId,
+    cameraName: record.cameraName
+  }));
 };
 
 export const savePlate = async (plate: LicensePlate): Promise<LicensePlate> => {
-  const connection = await pool.getConnection();
-  try {
-    await connection.beginTransaction();
-
-    const query = `
-      INSERT INTO \`plates\` (
-        \`id\`, \`number\`, \`type\`, \`confidence\`, \`timestamp\`,
-        \`image_url\`, \`location\`, \`rect_x\`, \`rect_y\`, \`rect_w\`, \`rect_h\`, \`saved\`
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        \`number\` = VALUES(\`number\`),
-        \`type\` = VALUES(\`type\`),
-        \`confidence\` = VALUES(\`confidence\`),
-        \`timestamp\` = VALUES(\`timestamp\`),
-        \`image_url\` = VALUES(\`image_url\`),
-        \`location\` = VALUES(\`location\`),
-        \`rect_x\` = VALUES(\`rect_x\`),
-        \`rect_y\` = VALUES(\`rect_y\`),
-        \`rect_w\` = VALUES(\`rect_w\`),
-        \`rect_h\` = VALUES(\`rect_h\`),
-        \`saved\` = VALUES(\`saved\`)
-    `;
-
-    const params = [
-      plate.id,
-      plate.number,
-      plate.type,
-      plate.confidence,
-      plate.timestamp,
-      plate.imageUrl || null,
-      plate.location || null,
-      plate.rect?.x || null,
-      plate.rect?.y || null,
-      plate.rect?.w || null,
-      plate.rect?.h || null,
-      plate.saved ? 1 : 0
-    ];
-
-    await connection.execute(query, params);
-
-    // 检查黑名单并创建告警
-    const [blacklistRows] = await connection.execute<RowDataPacket[]>(
-      'SELECT * FROM `blacklist` WHERE `plate_number` = ?',
-      [plate.number]
-    );
-
-    if (blacklistRows.length > 0) {
-      const blacklistItem = blacklistRows[0];
-      const alarmTimestamp = plate.timestamp || Date.now();
-      
-      // 检查是否已存在相同的告警（避免重复创建）
-      const [existingAlarms] = await connection.execute<RowDataPacket[]>(
-        'SELECT * FROM `alarms` WHERE `plate_number` = ? AND `blacklist_id` = ? AND `plate_id` = ?',
-        [plate.number, blacklistItem.id, plate.id]
-      );
-      
-      if (existingAlarms.length === 0) {
-        await connection.execute(
-          `INSERT INTO \`alarms\` (
-            \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
-            \`plate_number\`, \`image_path\`, \`location\`, \`reason\`, \`severity\`
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            plate.id,
-            blacklistItem.id,
-            alarmTimestamp,
-            0,
-            plate.number,
-            plate.imageUrl || null,
-            plate.location || null,
-            `Blacklisted: ${blacklistItem.reason}`,
-            blacklistItem.severity
-          ]
-        );
-      }
-    }
-
-    await connection.commit();
-    return plate;
-  } catch (error) {
-    await connection.rollback();
-    throw error;
-  } finally {
-    connection.release();
-  }
+  const record: PlateRecord = {
+    id: plate.id,
+    plateNumber: plate.number,
+    plateType: plate.type,
+    confidence: plate.confidence,
+    timestamp: plate.timestamp,
+    cameraId: plate.cameraId,
+    cameraName: plate.cameraName || plate.location,
+    location: plate.location,
+    imageUrl: plate.imageUrl,
+    rect: plate.rect,
+    createdAt: plate.timestamp || Date.now()
+  };
+  await savePlateRecord(record);
+  return plate;
 };
 
 // ========== Blacklist 相关操作 ==========

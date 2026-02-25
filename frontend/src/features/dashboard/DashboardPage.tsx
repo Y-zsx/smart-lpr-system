@@ -9,30 +9,40 @@ import { usePlateStore } from '@/store/plateStore';
 import { Activity, ShieldCheck, Zap, Car, Calendar, Database } from 'lucide-react';
 import { CategoryDetail } from '@/components/CategoryDetail';
 import { apiClient } from '@/api/client';
+import { usePlateHistory } from '@/hooks/usePlateHistory';
 
 export const DashboardPage: React.FC = () => {
-    const { stats, setPlates, setTrends, setStats } = usePlateStore();
+    const { stats, setPlates, setStats } = usePlateStore();
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [dataMode, setDataMode] = useState<'date' | 'total'>('date');
     const [selectedCategory, setSelectedCategory] = useState<{ type: string; label: string } | null>(null);
 
+    const isToday = dataMode === 'date' && selectedDate === new Date().toISOString().split('T')[0];
+    const { data: plateGroups } = usePlateHistory({
+        date: dataMode === 'date' ? selectedDate : undefined,
+        groupBy: 'plate',
+        autoRefresh: isToday,
+        refreshIntervalMs: 5000
+    });
+
     useEffect(() => {
-        const fetchData = async () => {
-            if (document.hidden) return;
+        setPlates(plateGroups);
+    }, [plateGroups, setPlates]);
+
+    useEffect(() => {
+        let timer: number | undefined;
+        let stopped = false;
+        let failureCount = 0;
+        const fetchStats = async () => {
+            if (document.hidden || stopped) return;
             try {
                 let start: number | undefined;
-                let end: number | undefined;
                 if (dataMode === 'date') {
                     start = new Date(selectedDate).setHours(0, 0, 0, 0);
-                    end = new Date(selectedDate).setHours(23, 59, 59, 999);
                 }
-                const [groups, dashboardStats] = await Promise.all([
-                    apiClient.getHistory(start, end, undefined, 'plate'),
-                    dataMode === 'date'
-                        ? apiClient.getDashboardStats(start).catch(err => { console.warn('Failed to fetch dashboard stats:', err); return null; })
-                        : apiClient.getDashboardStats().catch(err => { console.warn('Failed to fetch dashboard stats:', err); return null; })
-                ]);
-                setPlates(groups);
+                const dashboardStats = await (dataMode === 'date'
+                    ? apiClient.getDashboardStats(start)
+                    : apiClient.getDashboardStats());
                 if (dashboardStats) {
                     setStats({
                         total: dashboardStats.total,
@@ -43,19 +53,26 @@ export const DashboardPage: React.FC = () => {
                         trends: dashboardStats.trends
                     });
                 }
+                failureCount = 0;
             } catch (e) {
                 console.error('Failed to fetch history:', e);
+                failureCount += 1;
+            } finally {
+                if (!isToday || stopped) return;
+                const delay = Math.min(30000, 5000 * Math.max(1, failureCount));
+                timer = window.setTimeout(fetchStats, delay);
             }
         };
-        fetchData();
-        const isToday = dataMode === 'date' && selectedDate === new Date().toISOString().split('T')[0];
-        let interval: number;
-        if (isToday) interval = window.setInterval(fetchData, 5000);
-        return () => { if (interval) clearInterval(interval); };
-    }, [selectedDate, dataMode, setPlates, setStats]);
 
-    const isToday = selectedDate === new Date().toISOString().split('T')[0];
-    const dateLabel = dataMode === 'total' ? '总量识别' : (isToday ? '今日识别' : '当日识别');
+        void fetchStats();
+        return () => {
+            stopped = true;
+            if (timer) window.clearTimeout(timer);
+        };
+    }, [selectedDate, dataMode, setStats, isToday]);
+
+    const isCurrentDay = selectedDate === new Date().toISOString().split('T')[0];
+    const dateLabel = dataMode === 'total' ? '总量识别' : (isCurrentDay ? '今日识别' : '当日识别');
 
     return (
         <div className="space-y-6">

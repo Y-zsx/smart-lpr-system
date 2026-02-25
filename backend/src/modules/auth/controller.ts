@@ -3,7 +3,7 @@ import { AppError } from '../../utils/AppError';
 import { AuthenticatedRequest, AuthUser, signToken } from './auth';
 import { findUserByCredentials, getUserAccessContext } from '../iam/rbacService';
 
-export function login(req: Request, res: Response, next: NextFunction) {
+export async function login(req: Request, res: Response, next: NextFunction) {
   const { username, password } = req.body as { username?: string; password?: string };
 
   if (!username || !password) {
@@ -11,38 +11,36 @@ export function login(req: Request, res: Response, next: NextFunction) {
     return;
   }
 
-  findUserByCredentials(username, password)
-    .then(async (userRecord) => {
-      if (!userRecord) {
-        next(new AppError('Invalid username or password', 401, 'INVALID_CREDENTIALS'));
-        return;
+  try {
+    const userRecord = await findUserByCredentials(username, password);
+    if (!userRecord) {
+      next(new AppError('Invalid username or password', 401, 'INVALID_CREDENTIALS'));
+      return;
+    }
+    const access = await getUserAccessContext(userRecord.id);
+    const user: AuthUser = {
+      id: userRecord.id,
+      username: userRecord.username,
+      role: access.roles.includes('admin') ? 'admin' : access.roles.includes('viewer') ? 'viewer' : 'operator'
+    };
+    const token = signToken(user);
+    res.json({
+      success: true,
+      data: {
+        token,
+        user: {
+          ...user,
+          displayName: userRecord.displayName
+        },
+        roles: access.roles,
+        permissions: access.permissions,
+        dataScope: access.dataScope
       }
-
-      const access = await getUserAccessContext(userRecord.id);
-      const user: AuthUser = {
-        id: userRecord.id,
-        username: userRecord.username,
-        role: access.roles.includes('admin') ? 'admin' : access.roles.includes('viewer') ? 'viewer' : 'operator'
-      };
-      const token = signToken(user);
-      res.json({
-        success: true,
-        data: {
-          token,
-          user: {
-            ...user,
-            displayName: userRecord.displayName
-          },
-          roles: access.roles,
-          permissions: access.permissions,
-          dataScope: access.dataScope
-        }
-      });
-    })
-    .catch((error) => {
-      console.error('[AuthController] login failed', error);
-      next(new AppError('Login failed', 500, 'LOGIN_FAILED'));
     });
+  } catch (error) {
+    console.error('[AuthController] login failed', error);
+    next(new AppError('Login failed', 500, 'LOGIN_FAILED'));
+  }
 }
 
 export function me(req: AuthenticatedRequest, res: Response) {

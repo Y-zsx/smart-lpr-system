@@ -302,6 +302,7 @@ vim .env
 # 服务器配置
 PORT=8000
 NODE_ENV=production
+JWT_SECRET=replace_with_a_strong_random_secret
 
 # 数据库配置 - ⚠️ 修改为你的数据库信息
 DB_HOST=localhost
@@ -422,8 +423,9 @@ cat > ecosystem.config.js << EOF
 module.exports = {
   apps: [{
     name: 'smart-lpr-ai',
-    script: 'main.py',
-    interpreter: 'venv/bin/python',
+    script: 'venv/bin/python',
+    args: '-m app.main',
+    interpreter: 'none',
     instances: 1,
     exec_mode: 'fork',
     env: {

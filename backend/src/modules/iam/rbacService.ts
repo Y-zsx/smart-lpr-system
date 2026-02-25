@@ -1,5 +1,6 @@
 import { RowDataPacket } from 'mysql2';
 import { PoolConnection } from 'mysql2/promise';
+import bcrypt from 'bcryptjs';
 import { pool } from '../../config/database';
 
 export interface DataScope {
@@ -39,14 +40,18 @@ export async function findUserByCredentials(username: string, password: string):
   const connection = await pool.getConnection();
   try {
     const [rows] = await connection.execute<RowDataPacket[]>(
-      `SELECT id, username, display_name, status
+      `SELECT id, username, display_name, status, password
        FROM iam_users
-       WHERE username = ? AND password = ? AND status = 'active'
+       WHERE username = ? AND status = 'active'
        LIMIT 1`,
-      [username, password]
+      [username]
     );
     if (!rows.length) return null;
     const user = rows[0];
+    const passwordMatched = await bcrypt.compare(password, String(user.password || ''));
+    if (!passwordMatched) {
+      return null;
+    }
     const roles = await getUserRoles(connection, user.id);
     return {
       id: user.id,
