@@ -172,12 +172,12 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92dvh] sm:max-h-[90vh] flex flex-col">
                 {/* Header */}
-                <div className="p-6 border-b border-gray-200 flex items-center justify-between shrink-0">
+                <div className="p-4 sm:p-6 border-b border-gray-200 flex items-center justify-between shrink-0 gap-3">
                     <div>
-                        <h2 className="text-2xl font-bold text-gray-800 font-mono">
+                        <h2 className="text-xl sm:text-2xl font-bold text-gray-800 font-mono break-all">
                             {group.plateNumber}
                         </h2>
                         <p className="text-sm text-gray-500 mt-1">
@@ -202,26 +202,26 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                 </div>
 
                 {/* Info Cards */}
-                <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0 border-b border-gray-200">
-                    <div className="bg-blue-50 p-4 rounded-lg">
+                <div className="p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 shrink-0 border-b border-gray-200">
+                    <div className="bg-blue-50 p-3 sm:p-4 rounded-lg">
                         <p className="text-xs text-gray-500 mb-1">首次识别</p>
                         <p className="text-sm font-medium text-gray-800">
                             {new Date(group.firstSeen).toLocaleString('zh-CN')}
                         </p>
                     </div>
-                    <div className="bg-green-50 p-4 rounded-lg">
+                    <div className="bg-green-50 p-3 sm:p-4 rounded-lg">
                         <p className="text-xs text-gray-500 mb-1">最后识别</p>
                         <p className="text-sm font-medium text-gray-800">
                             {new Date(group.lastSeen).toLocaleString('zh-CN')}
                         </p>
                     </div>
-                    <div className="bg-purple-50 p-4 rounded-lg">
+                    <div className="bg-purple-50 p-3 sm:p-4 rounded-lg">
                         <p className="text-xs text-gray-500 mb-1">出现位置</p>
                         <p className="text-sm font-medium text-gray-800">
                             {group.locations.length} 个位置
                         </p>
                     </div>
-                    <div className="bg-orange-50 p-4 rounded-lg">
+                    <div className="bg-orange-50 p-3 sm:p-4 rounded-lg">
                         <p className="text-xs text-gray-500 mb-1">摄像头</p>
                         <p className="text-sm font-medium text-gray-800">
                             {group.cameras.length} 个摄像头
@@ -230,7 +230,7 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                 </div>
 
                 {/* Records List */}
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6">
                     <h3 className="text-lg font-semibold text-gray-800 mb-4">识别记录</h3>
                     <div className="space-y-3">
                         {group.records.map((record) => (
@@ -238,7 +238,7 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                                 key={record.id}
                                 className="p-4 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50/30 transition-all"
                             >
-                                <div className="flex items-start justify-between gap-4">
+                                <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
                                     <div className="flex-1">
                                         <div className="flex items-center gap-3 mb-2">
                                             <span className="text-xs font-medium text-gray-500 bg-white px-2 py-1 rounded">
@@ -249,7 +249,7 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                                                 <span>{new Date(record.timestamp).toLocaleString('zh-CN')}</span>
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-4 text-sm text-gray-600">
+                                        <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-sm text-gray-600">
                                             {record.cameraName && (
                                                 <div className="flex items-center gap-1">
                                                     <Camera size={14} />
@@ -264,7 +264,7 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                                             )}
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex items-center gap-2 self-end sm:self-auto">
                                         {record.imageUrl && (
                                             <button
                                                 onClick={() => {
@@ -330,8 +330,8 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                         className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 p-4"
                         onClick={closeImageModal}
                     >
-                        <div className="relative max-w-5xl w-full max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
-                            <div className="absolute top-4 left-4 z-10 flex items-center gap-2 bg-black/55 backdrop-blur-sm rounded-lg p-2">
+                        <div className="relative max-w-5xl w-full max-h-[92dvh] sm:max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+                            <div className="absolute top-3 left-3 right-14 sm:right-auto z-10 flex items-center gap-2 bg-black/55 backdrop-blur-sm rounded-lg p-2 overflow-x-auto">
                                 <div className="mr-2 flex items-center gap-1 rounded-md bg-white/95 p-1">
                                     <button
                                         onClick={() => setShowAnnotatedImage(false)}
@@ -379,7 +379,7 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                             </div>
 
                             <div
-                                className="w-full h-[80vh] overflow-hidden rounded-lg cursor-grab active:cursor-grabbing select-none"
+                                className="w-full h-[76dvh] sm:h-[80vh] overflow-hidden rounded-lg cursor-grab active:cursor-grabbing select-none"
                                 onWheel={(e) => {
                                     e.preventDefault();
                                     zoomBy(e.deltaY > 0 ? -0.1 : 0.1);

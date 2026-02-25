@@ -916,12 +916,12 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
 
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[92dvh] sm:max-h-[90vh] flex flex-col">
                 {/* Header */}
-                <div className="p-6 border-b border-gray-200 flex items-center justify-between shrink-0">
+                <div className="p-4 sm:p-6 border-b border-gray-200 flex items-center justify-between shrink-0 gap-3">
                     <div>
-                        <h2 className="text-2xl font-bold text-gray-800 font-mono">
+                        <h2 className="text-xl sm:text-2xl font-bold text-gray-800 font-mono break-all">
                             {plateNumber} - 路径重现
                         </h2>
                         <p className="text-sm text-gray-500 mt-1">
@@ -937,7 +937,7 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
                 </div>
 
                 {/* Controls */}
-                <div className="p-4 border-b border-gray-200 flex items-center gap-3 shrink-0">
+                <div className="p-3 sm:p-4 border-b border-gray-200 flex items-center gap-3 flex-wrap shrink-0">
                     <button
                         onClick={isPlaying ? pausePath : playPath}
                         disabled={pathPoints.length === 0}
@@ -955,7 +955,7 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
                 </div>
 
                 {/* Map Container */}
-                <div className="flex-1 relative min-h-[400px]">
+                <div className="flex-1 relative min-h-[280px] sm:min-h-[400px]">
                     {isLoading && (
                         <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
                             <div className="text-center">
@@ -972,17 +972,17 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
                             </div>
                         </div>
                     )}
-                    <div ref={mapContainerRef} className="w-full h-full" style={{ minHeight: '400px' }} />
+                    <div ref={mapContainerRef} className="w-full h-full" style={{ minHeight: '280px' }} />
                 </div>
 
                 {/* Path Info */}
                 {pathPoints.length > 0 && (
-                    <div className="p-4 border-t border-gray-200 shrink-0 max-h-32 overflow-y-auto">
+                    <div className="p-3 sm:p-4 border-t border-gray-200 shrink-0 max-h-40 overflow-y-auto">
                         <div className="flex items-center gap-2 mb-2">
                             <MapPin size={16} className="text-gray-500" />
                             <span className="text-sm font-semibold text-gray-700">路径信息</span>
                         </div>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-600">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-600">
                             <div>
                                 <span className="text-gray-500">起点:</span> {pathPoints[0].address}
                             </div>

@@ -1,7 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { CameraView } from './CameraView';
 import { useCameraStore } from '../store/cameraStore';
-import { Plus, X, Grid, LayoutGrid, Maximize2 } from 'lucide-react';
+import { Plus, X, Grid } from 'lucide-react';
 
 interface MonitorWindow {
     id: string;
@@ -14,6 +14,15 @@ export const MultiCameraView: React.FC = () => {
         { id: 'window-1', cameraId: null }
     ]);
     const [layout, setLayout] = useState<'1x1' | '2x2' | '3x3' | '4x4'>('2x2');
+    const [isMobile, setIsMobile] = useState(() =>
+        typeof window !== 'undefined' ? window.innerWidth < 640 : false
+    );
+
+    useEffect(() => {
+        const onResize = () => setIsMobile(window.innerWidth < 640);
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
 
     const addWindow = useCallback(() => {
         const newWindow: MonitorWindow = {
@@ -38,6 +47,9 @@ export const MultiCameraView: React.FC = () => {
     }, []);
 
     const getLayoutClass = () => {
+        if (isMobile) {
+            return layout === '2x2' ? 'grid-cols-1 grid-rows-2' : 'grid-cols-1 grid-rows-1';
+        }
         switch (layout) {
             case '1x1':
                 return 'grid-cols-1 grid-rows-1';
@@ -53,6 +65,9 @@ export const MultiCameraView: React.FC = () => {
     };
 
     const getMaxWindows = () => {
+        if (isMobile) {
+            return layout === '1x1' ? 1 : 2;
+        }
         switch (layout) {
             case '1x1': return 1;
             case '2x2': return 4;
@@ -64,21 +79,37 @@ export const MultiCameraView: React.FC = () => {
 
     const maxWindows = getMaxWindows();
     const displayWindows = windows.slice(0, maxWindows);
+    const availableLayouts = (isMobile ? (['1x1', '2x2'] as const) : (['1x1', '2x2', '3x3', '4x4'] as const));
+
+    useEffect(() => {
+        if (isMobile && (layout === '3x3' || layout === '4x4')) {
+            setLayout('2x2');
+        }
+    }, [isMobile, layout]);
+
+    useEffect(() => {
+        setWindows(prev => {
+            if (prev.length <= maxWindows) return prev;
+            return prev.slice(0, maxWindows);
+        });
+    }, [maxWindows]);
 
     return (
         <div className="w-full h-full flex flex-col bg-gray-50">
             {/* 工具栏 */}
-            <div className="bg-white border-b border-gray-200 p-2 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2">
+            <div className="bg-white border-b border-gray-200 p-2 flex items-center justify-between gap-2 shrink-0">
+                <div className="flex items-center gap-2 min-w-0 overflow-x-auto">
                     <span className="text-sm font-medium text-gray-700">布局:</span>
                     <div className="flex gap-1">
-                        {(['1x1', '2x2', '3x3', '4x4'] as const).map((l) => (
+                        {availableLayouts.map((l) => (
                             <button
                                 key={l}
                                 onClick={() => {
                                     setLayout(l);
                                     // 调整窗口数量以适应新布局
-                                    const max = l === '1x1' ? 1 : l === '2x2' ? 4 : l === '3x3' ? 9 : 16;
+                                    const max = isMobile
+                                        ? (l === '1x1' ? 1 : 2)
+                                        : (l === '1x1' ? 1 : l === '2x2' ? 4 : l === '3x3' ? 9 : 16);
                                     setWindows(prev => {
                                         if (prev.length > max) {
                                             return prev.slice(0, max);
@@ -92,7 +123,7 @@ export const MultiCameraView: React.FC = () => {
                                         return prev;
                                     });
                                 }}
-                                className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                                className={`px-3 py-1 rounded text-xs font-medium whitespace-nowrap transition-colors ${
                                     layout === l
                                         ? 'bg-blue-600 text-white'
                                         : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
@@ -107,10 +138,11 @@ export const MultiCameraView: React.FC = () => {
                     {displayWindows.length < maxWindows && (
                         <button
                             onClick={addWindow}
-                            className="px-3 py-1 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 flex items-center gap-1"
+                            className="px-3 py-1 bg-blue-600 text-white rounded text-sm font-medium hover:bg-blue-700 flex items-center gap-1 whitespace-nowrap"
                         >
                             <Plus size={14} />
-                            添加窗口
+                            <span className="hidden sm:inline">添加窗口</span>
+                            <span className="sm:hidden">添加</span>
                         </button>
                     )}
                 </div>

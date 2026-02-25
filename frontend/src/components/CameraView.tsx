@@ -818,7 +818,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                         </div>
 
                         {!detectedRect && (
-                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-64 h-32 border-2 border-blue-500 rounded-lg opacity-70 transition-opacity duration-300">
+                            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-52 h-28 sm:w-64 sm:h-32 border-2 border-blue-500 rounded-lg opacity-70 transition-opacity duration-300">
                                 <div className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-blue-400 -mt-1 -ml-1"></div>
                                 <div className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-blue-400 -mt-1 -mr-1"></div>
                                 <div className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-blue-400 -mb-1 -ml-1"></div>
@@ -880,7 +880,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                         const { plates } = recentRecognition;
                         const isAnyBlacklisted = plates.some(p => blacklist.has(p.number));
                         return (
-                            <div className={`absolute bottom-24 left-1/2 transform -translate-x-1/2 z-30 pointer-events-auto animate-in slide-in-from-bottom-5 duration-300 ${
+                            <div className={`absolute bottom-24 left-1/2 transform -translate-x-1/2 z-30 pointer-events-auto animate-in slide-in-from-bottom-5 duration-300 px-2 sm:px-0 ${
                                 isAnyBlacklisted ? 'w-full max-w-md' : 'w-full max-w-sm'
                             }`}>
                                 <div className={`rounded-xl shadow-2xl border-2 overflow-hidden ${
@@ -945,10 +945,10 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                 )}
             </div>
 
-            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-4 pointer-events-auto z-10">
+            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-4 pointer-events-auto z-10 px-2 sm:px-0">
                 <button
                     onClick={toggleScanning}
-                    className={`flex items-center gap-2 px-6 py-2.5 rounded-full font-medium transition-all ${isScanning
+                    className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-full font-medium transition-all whitespace-nowrap ${isScanning
                         ? 'bg-red-500/90 hover:bg-red-600 text-white shadow-lg shadow-red-500/20'
                         : 'bg-blue-500/90 hover:bg-blue-600 text-white shadow-lg shadow-blue-500/20'
                         }`}

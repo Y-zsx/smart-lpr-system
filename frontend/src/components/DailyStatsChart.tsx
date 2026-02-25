@@ -169,7 +169,7 @@ export const DailyStatsChart: React.FC<DailyStatsChartProps> = React.memo(({ dat
                 <BarChart3 className="text-blue-600" size={20} />
                 <h3 className="font-semibold text-gray-800">{date ? "每日识别趋势 (近7天)" : "历史识别趋势"}</h3>
             </div>
-            <div className="flex-1 flex items-center justify-center text-gray-400 min-h-[200px]">
+            <div className="flex-1 flex items-center justify-center text-gray-400 min-h-[180px] sm:min-h-[200px]">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             </div>
         </div>
@@ -181,7 +181,7 @@ export const DailyStatsChart: React.FC<DailyStatsChartProps> = React.memo(({ dat
                 <BarChart3 className="text-blue-600" size={20} />
                 <h3 className="font-semibold text-gray-800">{date ? "每日识别趋势 (近7天)" : "历史识别趋势"}</h3>
             </div>
-            <div className="flex-1 flex items-center justify-center text-gray-400 min-h-[200px]">暂无数据</div>
+            <div className="flex-1 flex items-center justify-center text-gray-400 min-h-[180px] sm:min-h-[200px]">暂无数据</div>
         </div>
     );
 
@@ -192,7 +192,7 @@ export const DailyStatsChart: React.FC<DailyStatsChartProps> = React.memo(({ dat
                 <h3 className="font-semibold text-gray-800">{date ? "每日识别趋势 (近7天)" : "历史识别趋势"}</h3>
             </div>
 
-            <div className="flex-1 min-h-[200px]">
+            <div className="flex-1 min-h-[180px] sm:min-h-[200px]">
                 <ReactECharts
                     option={getOption()}
                     style={{ height: '100%', width: '100%' }}

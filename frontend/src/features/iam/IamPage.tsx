@@ -223,7 +223,7 @@ export const IamPage: React.FC = () => {
                     {activeRole && (
                         <>
                             <div className="mb-3 text-sm text-gray-600">{activeRole.description}</div>
-                            <div className="space-y-2 max-h-72 overflow-auto">
+                            <div className="space-y-2 max-h-72 sm:max-h-80 overflow-auto">
                                 {groupedPermissions.map(([group, items]) => (
                                     <div key={group} className="border border-gray-100 rounded p-2">
                                         <div className="text-xs text-gray-500 mb-1">{group}</div>
@@ -234,7 +234,7 @@ export const IamPage: React.FC = () => {
                                                     <button
                                                         key={perm.key}
                                                         onClick={() => toggleRolePermission(perm.key)}
-                                                        className={`px-2 py-1 text-xs rounded border ${checked ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-200'}`}
+                                                        className={`px-2 py-1.5 text-xs rounded border ${checked ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-gray-600 border-gray-200'}`}
                                                     >
                                                         {perm.name}
                                                     </button>
@@ -247,7 +247,7 @@ export const IamPage: React.FC = () => {
 
                             <div className="mt-4 p-3 border border-gray-100 rounded">
                                 <div className="text-sm font-medium text-gray-700 mb-2">数据范围</div>
-                                <div className="flex gap-2 items-center">
+                                <div className="flex gap-2 items-center flex-wrap">
                                     <button
                                         onClick={() => updateRoleScope({ all: true, cameraIds: [], regionCodes: [] })}
                                         className={`px-2 py-1 text-xs rounded ${activeRole.dataScope.all ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}

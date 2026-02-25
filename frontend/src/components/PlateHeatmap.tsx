@@ -204,16 +204,16 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) =
 
     return (
         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm h-full flex flex-col">
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
                 <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
                     <MapIcon size={20} className="text-blue-600" />
                     车牌归属地热力图
                 </h3>
                 {date && (
-                    <div className="flex bg-gray-100 p-1 rounded-lg">
+                    <div className="flex bg-gray-100 p-1 rounded-lg w-full sm:w-auto overflow-x-auto">
                         <button
                             onClick={() => setViewMode('daily')}
-                            className={`px-3 py-1 text-sm rounded-md transition-all flex items-center gap-1 ${viewMode === 'daily'
+                            className={`px-3 py-1 text-sm rounded-md transition-all flex items-center gap-1 whitespace-nowrap ${viewMode === 'daily'
                                 ? 'bg-white text-blue-600 shadow-sm font-medium'
                                 : 'text-gray-500 hover:text-gray-700'
                                 }`}
@@ -223,7 +223,7 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) =
                         </button>
                         <button
                             onClick={() => setViewMode('total')}
-                            className={`px-3 py-1 text-sm rounded-md transition-all flex items-center gap-1 ${viewMode === 'total'
+                            className={`px-3 py-1 text-sm rounded-md transition-all flex items-center gap-1 whitespace-nowrap ${viewMode === 'total'
                                 ? 'bg-white text-blue-600 shadow-sm font-medium'
                                 : 'text-gray-500 hover:text-gray-700'
                                 }`}
@@ -235,7 +235,7 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) =
                 )}
             </div>
 
-            <div className="flex-1 min-h-[400px] relative">
+            <div className="flex-1 min-h-[240px] sm:min-h-[320px] lg:min-h-[400px] relative">
                 {loading || !geoJsonLoaded ? (
                     <div className="absolute inset-0 flex items-center justify-center bg-gray-50/50">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>

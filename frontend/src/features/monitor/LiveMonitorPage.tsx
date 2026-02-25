@@ -15,18 +15,18 @@ export const LiveMonitorPage: React.FC<LiveMonitorPageProps> = ({ canManageCamer
     const [rightView, setRightView] = useState<'list' | 'map'>('list');
 
     return (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-140px)]">
-            <div className="lg:col-span-8 flex flex-col gap-4 h-full">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6 min-h-[calc(100dvh-8.5rem)] lg:h-[calc(100dvh-8.5rem)]">
+            <div className="lg:col-span-8 flex flex-col gap-4 min-h-0">
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full">
-                    <div className="flex border-b border-gray-100 shrink-0">
-                        <button onClick={() => setMode('camera')} className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${mode === 'camera' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
-                            <Camera size={18} />单窗口
+                    <div className="flex border-b border-gray-100 shrink-0 overflow-x-auto">
+                        <button onClick={() => setMode('camera')} className={`min-w-[108px] sm:min-w-0 flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${mode === 'camera' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
+                            <Camera size={18} /><span className="whitespace-nowrap">单窗口</span>
                         </button>
-                        <button onClick={() => setMode('multi')} className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${mode === 'multi' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
-                            <Grid size={18} />多窗口
+                        <button onClick={() => setMode('multi')} className={`min-w-[108px] sm:min-w-0 flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${mode === 'multi' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
+                            <Grid size={18} /><span className="whitespace-nowrap">多窗口</span>
                         </button>
-                        <button onClick={() => setMode('upload')} className={`flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${mode === 'upload' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
-                            <Upload size={18} />图片上传
+                        <button onClick={() => setMode('upload')} className={`min-w-[116px] sm:min-w-0 flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${mode === 'upload' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
+                            <Upload size={18} /><span className="whitespace-nowrap">图片上传</span>
                         </button>
                     </div>
                     <div className={`flex-1 relative min-h-0 ${mode === 'upload' ? 'bg-gray-50' : 'bg-black'}`}>
@@ -34,8 +34,8 @@ export const LiveMonitorPage: React.FC<LiveMonitorPageProps> = ({ canManageCamer
                     </div>
                 </div>
             </div>
-            <div className="lg:col-span-4 h-full flex flex-col gap-4">
-                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-2 flex gap-2">
+            <div className="lg:col-span-4 min-h-0 flex flex-col gap-4">
+                <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-2 flex flex-col sm:flex-row gap-2">
                     <button onClick={() => setRightView('list')} className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors ${rightView === 'list' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
                         <List size={16} />摄像头列表
                     </button>
@@ -51,7 +51,7 @@ export const LiveMonitorPage: React.FC<LiveMonitorPageProps> = ({ canManageCamer
                             <h3 className="font-semibold text-gray-800 mb-3 flex items-center gap-2">
                                 <Map size={18} className="text-blue-600" />摄像头位置分布
                             </h3>
-                            <div className="h-[calc(100%-3rem)]">
+                            <div className="h-[280px] sm:h-[320px] lg:h-[calc(100%-3rem)]">
                                 <CameraMap />
                             </div>
                         </div>

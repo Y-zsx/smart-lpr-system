@@ -81,7 +81,7 @@ export const DashboardPage: React.FC = () => {
                     <h2 className="text-xl font-bold text-gray-800">仪表盘</h2>
                     <p className="text-sm text-gray-500">查看实时数据统计和趋势分析</p>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <div className="flex bg-gray-100 rounded-lg p-1">
                         <button onClick={() => setDataMode('date')} className={`px-3 py-1.5 text-sm rounded-md transition-all flex items-center gap-1.5 ${dataMode === 'date' ? 'bg-white text-blue-600 shadow-sm font-medium' : 'text-gray-500 hover:text-gray-700'}`} title="按日期查看">
                             <Calendar size={16} /><span className="hidden sm:inline">日期</span>

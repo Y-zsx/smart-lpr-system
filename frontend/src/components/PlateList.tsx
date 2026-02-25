@@ -144,7 +144,7 @@ export const PlateList: React.FC<PlateListProps> = React.memo(({ date }) => {
                                 <ChevronRight size={20} className="text-gray-400 group-hover:text-blue-600 transition-colors" />
                             </div>
 
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-gray-600 mb-2">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs text-gray-600 mb-2">
                                 <div className="flex items-center gap-1">
                                     <Clock size={12} />
                                     <span>识别 {group.totalCount} 次</span>

@@ -242,12 +242,12 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92dvh] sm:max-h-[90vh] flex flex-col">
                 {/* Header */}
-                <div className="p-6 border-b border-gray-200 flex items-center justify-between shrink-0">
+                <div className="p-4 sm:p-6 border-b border-gray-200 flex items-center justify-between shrink-0 gap-3">
                     <div>
-                        <h2 className="text-2xl font-bold text-gray-800 font-mono">
+                        <h2 className="text-xl sm:text-2xl font-bold text-gray-800 font-mono break-all">
                             {plateNumber}
                         </h2>
                         <p className="text-sm text-gray-500 mt-1">
@@ -263,11 +263,11 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                 </div>
 
                 {/* Action Buttons */}
-                <div className="p-4 border-b border-gray-200 shrink-0 flex gap-3">
+                <div className="p-3 sm:p-4 border-b border-gray-200 shrink-0 flex flex-wrap gap-2 sm:gap-3">
                     {hasLocationData && (
                         <button
                             onClick={() => setShowPathReplay(true)}
-                            className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                            className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm sm:text-base"
                         >
                             <Route size={18} />
                             查看路径重现
@@ -276,7 +276,7 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                     {canManageAlarm && (
                         <button
                             onClick={handleDeleteAll}
-                            className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors ml-auto"
+                            className="flex items-center gap-2 px-3 sm:px-4 py-2 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition-colors sm:ml-auto text-sm sm:text-base"
                         >
                             <Archive size={18} />
                             归档所有告警
@@ -285,26 +285,26 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                 </div>
 
                 {/* Info Cards */}
-                <div className="p-6 grid grid-cols-2 md:grid-cols-4 gap-4 shrink-0 border-b border-gray-200">
-                    <div className="bg-red-50 p-4 rounded-lg">
+                <div className="p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 shrink-0 border-b border-gray-200">
+                    <div className="bg-red-50 p-3 sm:p-4 rounded-lg">
                         <p className="text-xs text-gray-500 mb-1">严重告警</p>
                         <p className="text-lg font-bold text-red-600">
                             {severityCounts.high}
                         </p>
                     </div>
-                    <div className="bg-orange-50 p-4 rounded-lg">
+                    <div className="bg-orange-50 p-3 sm:p-4 rounded-lg">
                         <p className="text-xs text-gray-500 mb-1">警告告警</p>
                         <p className="text-lg font-bold text-orange-600">
                             {severityCounts.medium}
                         </p>
                     </div>
-                    <div className="bg-yellow-50 p-4 rounded-lg">
+                    <div className="bg-yellow-50 p-3 sm:p-4 rounded-lg">
                         <p className="text-xs text-gray-500 mb-1">提示告警</p>
                         <p className="text-lg font-bold text-yellow-600">
                             {severityCounts.low}
                         </p>
                     </div>
-                    <div className="bg-blue-50 p-4 rounded-lg">
+                    <div className="bg-blue-50 p-3 sm:p-4 rounded-lg">
                         <p className="text-xs text-gray-500 mb-1">最新告警</p>
                         <p className="text-sm font-medium text-gray-800">
                             {latestAlarm ? new Date(latestAlarm.timestamp).toLocaleString('zh-CN') : '无'}
@@ -313,7 +313,7 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                 </div>
 
                 {/* Alarms List */}
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6">
                     <h3 className="text-lg font-semibold text-gray-800 mb-4">告警记录（按时间排序）</h3>
                     <div className="space-y-3">
                         {sortedAlarms.map((alarm) => (
