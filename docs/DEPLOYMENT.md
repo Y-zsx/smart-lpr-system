@@ -315,7 +315,6 @@ DB_NAME=smart_lpr
 AI_SERVICE_URL=http://localhost:8001
 
 # 文件上传配置
-UPLOAD_DIR=./uploads
 MAX_FILE_SIZE=10485760
 
 # CORS 配置 - ⚠️ 修改为你的前端域名
@@ -325,6 +324,14 @@ CORS_ORIGIN=https://your-domain.com,http://your-server-ip
 > ⚠️ **重要配置项**：
 > - `DB_PASSWORD`: 使用之前创建的数据库密码
 > - `CORS_ORIGIN`: 添加你的前端域名和服务器 IP
+>
+> 💡 **当前版本建议额外配置**（按需）：
+> - `PUBLIC_BASE_URL`: 上传文件访问地址（例如 `https://your-domain.com`）
+> - `GLOBAL_RATE_LIMIT_PER_MINUTE`: 全局限流阈值（默认 240）
+> - `AUTH_RATE_LIMIT_PER_MINUTE`: 登录限流阈值（默认 12）
+> - `RECOGNIZE_RATE_LIMIT_PER_MINUTE`: 识别接口限流阈值（默认 60）
+> - `UPLOAD_RATE_LIMIT_PER_MINUTE`: 上传接口限流阈值（默认 40）
+> - `AI_FAILURE_MODE`: AI 失败时返回模式（默认 `structured`）
 
 ### 4. 创建上传目录
 
@@ -487,18 +494,24 @@ npm install
 # 创建生产环境配置文件
 cat > .env.production << EOF
 # API 地址 - ⚠️ 修改为你的后端域名或 IP
-VITE_API_BASE_URL=https://your-domain.com/api
+VITE_API_BASE_URL=https://your-domain.com
 # 或使用 IP
-# VITE_API_BASE_URL=http://your-server-ip:8000/api
+# VITE_API_BASE_URL=http://your-server-ip:8000
 
 # 高德地图 API Key（如果使用）- ⚠️ 修改为你的 Key
 VITE_AMAP_KEY=your_amap_key_here
+# 高德地图安全密钥（可选，按平台配置）
+# VITE_AMAP_SECURITY_CODE=your_amap_security_code
+
+# API 重试参数（可选）
+# VITE_API_RETRY_TIMES=2
+# VITE_API_RETRY_BASE_MS=250
 EOF
 ```
 
 > ⚠️ **重要**: 
-> - `VITE_API_BASE_URL`: 如果使用域名，应该是 `https://your-domain.com/api`
-> - 如果使用 IP，需要包含端口号 `http://your-server-ip:8000/api`
+> - `VITE_API_BASE_URL`: 如果使用域名，应该是 `https://your-domain.com`（不要带 `/api`）
+> - 如果使用 IP，需要包含端口号 `http://your-server-ip:8000`（不要带 `/api`）
 
 ### 4. 修改 API 客户端配置（如果需要）
 
@@ -869,7 +882,7 @@ curl https://your-domain.com/api/health
   - [ ] `CORS_ORIGIN` - 前端域名
 
 - [ ] **前端 `.env.production` 文件**:
-  - [ ] `VITE_API_BASE_URL` - 后端 API 地址
+  - [ ] `VITE_API_BASE_URL` - 后端基地址（不要带 `/api`）
   - [ ] `VITE_AMAP_KEY` - 高德地图 Key（如果使用）
 
 - [ ] **Nginx 配置**:
