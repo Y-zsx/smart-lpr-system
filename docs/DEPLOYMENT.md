@@ -4,6 +4,7 @@
 
 ## 📋 目录
 
+- [文档边界与使用方式](#文档边界与使用方式)
 - [前置准备](#前置准备)
 - [服务器环境配置](#服务器环境配置)
 - [数据库配置](#数据库配置)
@@ -11,12 +12,29 @@
 - [AI 服务部署](#ai-服务部署)
 - [前端应用部署](#前端应用部署)
 - [Nginx 反向代理配置](#nginx-反向代理配置)
-- [进程管理（PM2）](#进程管理pm2)
 - [SSL 证书配置](#ssl-证书配置)
 - [防火墙配置](#防火墙配置)
 - [域名解析](#域名解析)
-- [验证部署](#验证部署)
-- [常见问题](#常见问题)
+- [首次部署验收](#首次部署验收)
+- [首次部署常见问题](#首次部署常见问题)
+- [发布迭代与回滚](#发布迭代与回滚)
+
+---
+
+## 文档边界与使用方式
+
+本文档只负责**从 0 到 1 的首次上云部署**，包括：
+
+- 服务器基础环境安装
+- 数据库初始化
+- 前后端与 AI 首次启动
+- Nginx / HTTPS / 域名接入
+
+日常迭代发布、回滚、发布记录与优化策略统一使用：
+
+- [`RELEASE_ITERATION.md`](RELEASE_ITERATION.md)
+
+避免同时维护两套发布流程，防止命令漂移与步骤冲突。
 
 ---
 
@@ -684,49 +702,6 @@ server {
 
 ---
 
-## 进程管理（PM2）
-
-### 常用命令
-
-```bash
-# 查看所有服务状态
-pm2 status
-
-# 查看日志
-pm2 logs
-
-# 查看特定服务日志
-pm2 logs smart-lpr-backend
-pm2 logs smart-lpr-ai
-
-# 重启服务
-pm2 restart smart-lpr-backend
-pm2 restart smart-lpr-ai
-
-# 停止服务
-pm2 stop smart-lpr-backend
-
-# 删除服务
-pm2 delete smart-lpr-backend
-
-# 查看监控
-pm2 monit
-
-# 保存当前进程列表
-pm2 save
-```
-
-### PM2 监控面板（可选）
-
-```bash
-# 安装 PM2 Web 监控
-pm2 install pm2-server-monit
-```
-
-访问 `http://your-server-ip:9615` 查看监控面板
-
----
-
 ## SSL 证书配置
 
 ### 使用 Let's Encrypt（免费）
@@ -826,307 +801,82 @@ dig your-domain.com
 
 ---
 
-## 验证部署
+## 首次部署验收
 
-### 1. 检查服务状态
+### 1. 服务状态检查
 
 ```bash
-# PM2 服务
 pm2 status
-
-# Nginx 服务
-sudo systemctl status nginx
-
-# MySQL 服务
-sudo systemctl status mysql
+sudo systemctl status nginx --no-pager
+sudo systemctl status mysql --no-pager
 ```
 
-### 2. 检查端口监听
+通过标准：
+
+- `smart-lpr-backend`、`smart-lpr-ai` 均为 `online`
+- `nginx`、`mysql` 均为 `active (running)`
+
+### 2. 端口与健康检查
 
 ```bash
-# 检查端口
-sudo netstat -tlnp | grep -E '8000|8001|80|443'
-
-# 或使用 ss
 sudo ss -tlnp | grep -E '8000|8001|80|443'
+curl -s http://localhost:8000/api/health
+curl -s http://localhost:8001/health
+curl -s https://your-domain.com/api/health
 ```
 
-### 3. 测试 API
+### 3. 浏览器验收
 
-```bash
-# 后端健康检查
-curl http://localhost:8000/api/health
+至少验证以下链路：
 
-# AI 服务健康检查
-curl http://localhost:8001/health
-
-# 通过域名测试（如果已配置）
-curl https://your-domain.com/api/health
-```
-
-### 4. 访问前端
-
-在浏览器中访问：
-- `http://your-server-ip` 或
-- `http://your-domain.com` 或
-- `https://your-domain.com`（如果配置了 SSL）
+- 前端页面可访问（HTTPS）
+- 登录成功
+- 仪表盘与地图可加载
+- 摄像头页面可打开并触发识别
 
 ---
 
-## 配置检查清单
+## 首次部署常见问题
 
-### ✅ 必须修改的配置项
+### 1. 后端启动失败
 
-- [ ] **后端 `.env` 文件**:
-  - [ ] `DB_PASSWORD` - 数据库密码
-  - [ ] `CORS_ORIGIN` - 前端域名
-
-- [ ] **前端 `.env.production` 文件**:
-  - [ ] `VITE_API_BASE_URL` - 后端基地址（不要带 `/api`）
-  - [ ] `VITE_AMAP_KEY` - 高德地图 Key（如果使用）
-
-- [ ] **Nginx 配置**:
-  - [ ] `server_name` - 域名
-  - [ ] `root` - 前端 dist 目录路径
-  - [ ] `proxy_pass` - 后端服务地址
-
-- [ ] **数据库配置**:
-  - [ ] 数据库用户和密码
-  - [ ] 数据库名称
-
-### ✅ 可选配置项
-
-- [ ] SSL 证书配置
-- [ ] 域名解析
-- [ ] 防火墙规则
-- [ ] PM2 监控
-
----
-
-## 常见问题
-
-### 1. 后端服务无法启动
-
-**检查项**：
 ```bash
-# 查看 PM2 日志
-pm2 logs smart-lpr-backend
-
-# 检查端口是否被占用
+pm2 logs smart-lpr-backend --lines 100
 sudo lsof -i :8000
-
-# 检查环境变量
-cd ~/smart-lpr-system/backend
-cat .env
 ```
 
-**常见原因**：
-- 数据库连接失败（检查密码和用户）
-- 端口被占用
-- 环境变量配置错误
+优先排查项：数据库账号密码、`.env` 配置、端口冲突。
 
-### 2. AI 服务无法启动
+### 2. AI 启动失败
 
-**检查项**：
 ```bash
-# 查看 PM2 日志
-pm2 logs smart-lpr-ai
-
-# 检查 Python 虚拟环境
+pm2 logs smart-lpr-ai --lines 100
 cd ~/smart-lpr-system/ai-service
 source venv/bin/activate
 python -m app.main
 ```
 
-**常见原因**：
-- Python 依赖未安装
-- 虚拟环境路径错误
-- 端口被占用
+优先排查项：Python 依赖是否完整、系统依赖（如 `libGL.so.1`）、端口冲突。
 
-### 3. 前端无法访问
+### 3. 前端可访问但 API 异常
 
-**检查项**：
 ```bash
-# 检查 Nginx 状态
-sudo systemctl status nginx
-
-# 检查 Nginx 配置
 sudo nginx -t
-
-# 查看 Nginx 错误日志
-sudo tail -f /var/log/nginx/error.log
+sudo tail -n 100 /var/log/nginx/error.log
+curl -s http://localhost:8000/api/health
 ```
 
-**常见原因**：
-- Nginx 配置错误
-- 前端文件路径不正确
-- 防火墙未开放 80/443 端口
-
-### 4. API 请求失败（CORS 错误）
-
-**解决方案**：
-- 检查后端 `.env` 中的 `CORS_ORIGIN` 配置
-- 确保包含前端域名
-- 重启后端服务
-
-### 5. 数据库连接失败
-
-**检查项**：
-```bash
-# 测试数据库连接
-mysql -u lpr_user -p smart_lpr
-
-# 检查 MySQL 服务
-sudo systemctl status mysql
-
-# 检查用户权限
-mysql -u root -p
-SELECT user, host FROM mysql.user WHERE user='lpr_user';
-```
-
-### 6. 文件上传失败
-
-**检查项**：
-```bash
-# 检查上传目录权限
-ls -la ~/smart-lpr-system/backend/uploads
-
-# 修改权限
-chmod 755 ~/smart-lpr-system/backend/uploads
-```
-
-### 7. PM2 服务重启后消失
-
-**解决方案**：
-```bash
-# 保存 PM2 配置
-pm2 save
-
-# 设置开机自启
-pm2 startup
-# 执行输出的命令
-```
+优先排查项：Nginx 反向代理、`CORS_ORIGIN`、前端 `VITE_API_BASE_URL`。
 
 ---
 
-## 性能优化建议
+## 发布迭代与回滚
 
-### 1. 启用 Nginx 缓存
+首次部署完成后，后续所有日常发布、回滚、发布记录与提效策略，统一使用：
 
-在 Nginx 配置中添加：
+- [`RELEASE_ITERATION.md`](RELEASE_ITERATION.md)
 
-```nginx
-proxy_cache_path /var/cache/nginx levels=1:2 keys_zone=api_cache:10m max_size=100m inactive=60m;
-
-location /api {
-    proxy_cache api_cache;
-    proxy_cache_valid 200 60m;
-    # ... 其他配置
-}
-```
-
-### 2. 启用 Gzip 压缩
-
-已在 Nginx 配置中包含。
-
-### 3. 数据库优化
-
-```sql
--- 添加索引（如果还没有）
-ALTER TABLE plate_records ADD INDEX idx_plate_number (plate_number);
-ALTER TABLE plate_records ADD INDEX idx_timestamp (timestamp);
-```
-
-### 4. PM2 集群模式（高负载场景）
-
-```javascript
-// backend/ecosystem.config.js
-module.exports = {
-  apps: [{
-    name: 'smart-lpr-backend',
-    script: './dist/index.js',
-    instances: 'max',  // 使用所有 CPU 核心
-    exec_mode: 'cluster',
-    // ... 其他配置
-  }]
-}
-```
-
----
-
-## 备份策略
-
-### 1. 数据库备份
-
-```bash
-# 创建备份脚本
-cat > ~/backup-db.sh << 'EOF'
-#!/bin/bash
-BACKUP_DIR="/home/appuser/backups"
-DATE=$(date +%Y%m%d_%H%M%S)
-mkdir -p $BACKUP_DIR
-mysqldump -u lpr_user -p'your_password' smart_lpr > $BACKUP_DIR/db_$DATE.sql
-# 保留最近 7 天的备份
-find $BACKUP_DIR -name "db_*.sql" -mtime +7 -delete
-EOF
-
-chmod +x ~/backup-db.sh
-
-# 添加到 crontab（每天凌晨 2 点备份）
-crontab -e
-# 添加：0 2 * * * /home/appuser/backup-db.sh
-```
-
-### 2. 代码备份
-
-```bash
-# 使用 Git 推送到远程仓库
-git add .
-git commit -m "Backup: $(date +%Y%m%d)"
-git push origin main
-```
-
----
-
-## 更新部署
-
-### 1. 更新代码
-
-```bash
-cd ~/smart-lpr-system
-
-# 拉取最新代码
-git pull origin main
-
-# 或重新上传代码
-```
-
-### 2. 更新后端
-
-```bash
-cd ~/smart-lpr-system/backend
-npm install
-npm run build
-pm2 restart smart-lpr-backend
-```
-
-### 3. 更新前端
-
-```bash
-cd ~/smart-lpr-system/frontend
-npm install
-npm run build
-sudo systemctl reload nginx
-```
-
-### 4. 更新 AI 服务
-
-```bash
-cd ~/smart-lpr-system/ai-service
-source venv/bin/activate
-pip install -r requirements.txt
-pm2 restart smart-lpr-ai
-```
+本文件不再维护重复的发布运维命令，避免文档分叉。
 
 ---
 
@@ -1168,13 +918,11 @@ pm2 restart smart-lpr-ai
 - 后端 API: `http://your-domain.com/api`
 - AI 服务: `http://your-server-ip:8001`（内部访问）
 
-**管理命令**：
-- 查看服务: `pm2 status`
-- 查看日志: `pm2 logs`
-- 重启服务: `pm2 restart all`
-- 重载 Nginx: `sudo systemctl reload nginx`
+日常管理与版本发布请直接使用：
 
-如有问题，请查看日志文件或参考常见问题部分。
+- [`RELEASE_ITERATION.md`](RELEASE_ITERATION.md)
+
+如有问题，请优先查看本文件“首次部署常见问题”，再结合发布迭代文档排查。
 
 ---
 
