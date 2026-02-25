@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Activity, Cloud, Server, Maximize, Minimize } from 'lucide-react';
-import { apiClient } from '../api/client';
 
 export const SystemStatus: React.FC = () => {
     const [aiStatus, setAiStatus] = useState<'online' | 'offline' | 'checking'>('checking');
@@ -8,27 +7,18 @@ export const SystemStatus: React.FC = () => {
     const [isFullscreen, setIsFullscreen] = useState(false);
 
     const checkHealth = async () => {
-        // Check AI Backend (Python service on port 8001)
         try {
-            const res = await fetch('http://localhost:8001/health');
-            if (res.ok) setAiStatus('online');
-            else setAiStatus('offline');
-        } catch (e) {
-            setAiStatus('offline');
-        }
+            // Use same-origin health endpoint via Nginx proxy to avoid cross-origin issues.
+            const res = await fetch('/api/health');
+            const payload = await res.json().catch(() => null);
+            const aiOnline = Boolean(payload?.checks?.aiService);
+            const cloudOnline = Boolean(payload?.service === 'backend') || res.ok;
 
-        // Check Cloud Backend
-        try {
-            await apiClient.getAlarms();
-            setCloudStatus('online');
-        } catch (e: any) {
-            // If 401, it means we reached the server but are not logged in. 
-            // This counts as "Online" for system health purposes.
-            if (e.status === 401 || e.message?.includes('401')) {
-                setCloudStatus('online');
-            } else {
-                setCloudStatus('offline');
-            }
+            setAiStatus(aiOnline ? 'online' : 'offline');
+            setCloudStatus(cloudOnline ? 'online' : 'offline');
+        } catch (_e) {
+            setAiStatus('offline');
+            setCloudStatus('offline');
         }
     };
 
