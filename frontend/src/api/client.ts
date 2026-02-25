@@ -19,6 +19,27 @@ type ApiErrorPayload = {
     details?: unknown;
 };
 
+export class ApiRequestError extends Error {
+    status?: number;
+    code?: string;
+    details?: unknown;
+
+    constructor(message: string, options?: { status?: number; code?: string; details?: unknown }) {
+        super(message);
+        this.name = 'ApiRequestError';
+        this.status = options?.status;
+        this.code = options?.code;
+        this.details = options?.details;
+    }
+}
+
+export function getApiErrorStatus(error: unknown): number | undefined {
+    if (error instanceof ApiRequestError) {
+        return error.status;
+    }
+    return undefined;
+}
+
 export type AuthRole = 'admin' | 'viewer' | 'operator';
 
 export interface AuthUser {
@@ -110,11 +131,19 @@ async function request<T = any>(endpoint: string, options?: RequestOptions): Pro
                     if (!options?.skipAuthFailureHandler && authFailureHandler) {
                         authFailureHandler();
                     }
-                    throw new Error(payload?.message || '登录状态已过期，请重新登录');
+                    throw new ApiRequestError(payload?.message || '登录状态已过期，请重新登录', {
+                        status: 401,
+                        code: payload?.code,
+                        details: payload?.details
+                    });
                 }
 
                 const message = payload?.message || `请求失败 (${res.status})`;
-                const httpError = new Error(message);
+                const httpError = new ApiRequestError(message, {
+                    status: res.status,
+                    code: payload?.code,
+                    details: payload?.details
+                });
                 if (!shouldRetry(res.status, httpError, attempt, retryTimes)) {
                     throw httpError;
                 }
@@ -129,7 +158,8 @@ async function request<T = any>(endpoint: string, options?: RequestOptions): Pro
             return (res.blob() as unknown) as T;
         } catch (error) {
             lastError = error;
-            if (!shouldRetry(null, error, attempt, retryTimes)) {
+            const status = getApiErrorStatus(error) ?? null;
+            if (!shouldRetry(status, error, attempt, retryTimes)) {
                 throw error;
             }
             await sleep(retryBaseMs * Math.pow(2, attempt));

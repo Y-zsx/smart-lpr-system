@@ -5,11 +5,22 @@ interface PermissionGuardProps {
     permission?: string;
     role?: string;
     fallback?: React.ReactNode;
+    checkingFallback?: React.ReactNode;
     children: React.ReactNode;
 }
 
-export const PermissionGuard: React.FC<PermissionGuardProps> = ({ permission, role, fallback = null, children }) => {
+export const PermissionGuard: React.FC<PermissionGuardProps> = ({
+    permission,
+    role,
+    fallback = null,
+    checkingFallback = null,
+    children
+}) => {
     const auth = useAuth();
+
+    if (auth.status === 'checking') {
+        return <>{checkingFallback}</>;
+    }
 
     const allowed = (() => {
         if (auth.status !== 'authenticated') return false;

@@ -88,6 +88,12 @@ function AppContent() {
             </button>
         </div>
     );
+    const checkingFallback = (
+        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center">
+            <h3 className="text-lg font-semibold text-gray-800">正在校验登录状态</h3>
+            <p className="text-sm text-gray-500 mt-2">请稍候...</p>
+        </div>
+    );
 
     const authBadge = auth.status === 'authenticated'
         ? {
@@ -150,11 +156,11 @@ function AppContent() {
         <Router>
             <MainLayout actions={headerActions} navItems={navItems}>
                 <Routes>
-                    <Route path="/" element={<PermissionGuard permission="dashboard.view" fallback={unauthorizedFallback}><DashboardPage /></PermissionGuard>} />
-                    <Route path="/monitor" element={<PermissionGuard permission="monitor.view" fallback={unauthorizedFallback}><LiveMonitorPage canManageCamera={auth.hasPermission('camera.manage')} /></PermissionGuard>} />
-                    <Route path="/records" element={<PermissionGuard permission="records.view" fallback={unauthorizedFallback}><RecordsPage /></PermissionGuard>} />
-                    <Route path="/alarms" element={<PermissionGuard permission="alarms.view" fallback={unauthorizedFallback}><AlarmsPage canManageBlacklist={auth.hasPermission('blacklist.manage')} /></PermissionGuard>} />
-                    <Route path="/iam" element={<PermissionGuard permission="iam.manage" fallback={unauthorizedFallback}><IamPage /></PermissionGuard>} />
+                    <Route path="/" element={<PermissionGuard permission="dashboard.view" fallback={unauthorizedFallback} checkingFallback={checkingFallback}><DashboardPage /></PermissionGuard>} />
+                    <Route path="/monitor" element={<PermissionGuard permission="monitor.view" fallback={unauthorizedFallback} checkingFallback={checkingFallback}><LiveMonitorPage canManageCamera={auth.hasPermission('camera.manage')} /></PermissionGuard>} />
+                    <Route path="/records" element={<PermissionGuard permission="records.view" fallback={unauthorizedFallback} checkingFallback={checkingFallback}><RecordsPage /></PermissionGuard>} />
+                    <Route path="/alarms" element={<PermissionGuard permission="alarms.view" fallback={unauthorizedFallback} checkingFallback={checkingFallback}><AlarmsPage canManageBlacklist={auth.hasPermission('blacklist.manage')} /></PermissionGuard>} />
+                    <Route path="/iam" element={<PermissionGuard permission="iam.manage" fallback={unauthorizedFallback} checkingFallback={checkingFallback}><IamPage /></PermissionGuard>} />
                     <Route path="/settings" element={<SettingsPage />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
@@ -165,7 +171,13 @@ function AppContent() {
 
                 {showLoginModal && (
                     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-                        <div className="w-full max-w-sm bg-white rounded-xl shadow-xl border border-gray-100 p-5">
+                        <form
+                            className="w-full max-w-sm bg-white rounded-xl shadow-xl border border-gray-100 p-5"
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                handleLogin();
+                            }}
+                        >
                             <h3 className="text-lg font-bold text-gray-800">账号登录</h3>
                             <p className="text-sm text-gray-500 mt-1">
                                 管理员可执行增删改，viewer 账号仅可查看数据。
@@ -188,28 +200,26 @@ function AppContent() {
                                         onChange={(e) => setPassword(e.target.value)}
                                         className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:outline-none focus:border-blue-500"
                                         placeholder="请输入密码"
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') handleLogin();
-                                        }}
                                     />
                                 </div>
                             </div>
                             <div className="flex gap-2 mt-5">
                                 <button
+                                    type="button"
                                     onClick={() => setShowLoginModal(false)}
                                     className="flex-1 px-3 py-2 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200"
                                 >
                                     取消
                                 </button>
                                 <button
-                                    onClick={handleLogin}
+                                    type="submit"
                                     disabled={isLoggingIn}
                                     className="flex-1 px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
                                 >
                                     {isLoggingIn ? '登录中...' : '登录'}
                                 </button>
                             </div>
-                        </div>
+                        </form>
                     </div>
                 )}
             </MainLayout>

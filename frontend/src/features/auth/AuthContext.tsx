@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { apiClient, AuthRole, AuthSnapshot, AuthUser, registerAuthFailureHandler } from '@/api/client';
+import { apiClient, AuthRole, AuthSnapshot, AuthUser, getApiErrorStatus, registerAuthFailureHandler } from '@/api/client';
 
 interface AuthState {
     status: 'checking' | 'authenticated' | 'unauthenticated';
@@ -19,6 +19,13 @@ interface AuthContextType extends AuthState {
 }
 
 const defaultDataScope = { all: false, cameraIds: [], regionCodes: [] };
+const unauthenticatedState: AuthState = {
+    status: 'unauthenticated',
+    user: null,
+    roles: [],
+    permissions: [],
+    dataScope: defaultDataScope
+};
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -32,6 +39,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     const refresh = useCallback(async () => {
+        if (!apiClient.getToken()) {
+            setState(unauthenticatedState);
+            return;
+        }
         try {
             const snapshot = await apiClient.getUserInfo();
             setState({
@@ -41,14 +52,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 permissions: snapshot.permissions || [],
                 dataScope: snapshot.dataScope || defaultDataScope
             });
-        } catch (_error) {
-            setState({
-                status: 'unauthenticated',
-                user: null,
-                roles: [],
-                permissions: [],
-                dataScope: defaultDataScope
-            });
+        } catch (error) {
+            const status = getApiErrorStatus(error);
+            if (status === 401) {
+                setState(unauthenticatedState);
+                return;
+            }
+            setState(prev => (prev.status === 'authenticated' ? prev : unauthenticatedState));
         }
     }, []);
 
@@ -58,13 +68,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     useEffect(() => {
         registerAuthFailureHandler(() => {
-            setState({
-                status: 'unauthenticated',
-                user: null,
-                roles: [],
-                permissions: [],
-                dataScope: defaultDataScope
-            });
+            setState(unauthenticatedState);
         });
         return () => registerAuthFailureHandler(null);
     }, []);
@@ -83,13 +87,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const logout = useCallback(() => {
         apiClient.logout();
-        setState({
-            status: 'unauthenticated',
-            user: null,
-            roles: [],
-            permissions: [],
-            dataScope: defaultDataScope
-        });
+        setState(unauthenticatedState);
     }, []);
 
     const value = useMemo<AuthContextType>(() => ({
