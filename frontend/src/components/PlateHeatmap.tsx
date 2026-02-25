@@ -61,6 +61,11 @@ interface PlateHeatmapProps {
     date?: string; // 可选的日期参数，undefined 表示总量模式
 }
 
+const toSafeNumber = (value: unknown, fallback = 0): number => {
+    const n = typeof value === 'number' ? value : Number(value);
+    return Number.isFinite(n) ? n : fallback;
+};
+
 export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) => {
     const CHINA_GEOJSON_SOURCES = [
         // ECharts v5 package does not contain this map path on CDN.
@@ -133,7 +138,7 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) =
                     stats.forEach((item: any) => {
                         const code = String(item?.province || '').trim();
                         if (!code) return;
-                        normalized.set(code, Number(item?.count || 0));
+                        normalized.set(code, toSafeNumber(item?.count, 0));
                     });
                     setMapData(Array.from(normalized.entries()).map(([name, value]) => ({ name, value })));
                 }
@@ -148,7 +153,8 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) =
     }, [viewMode, date, settings.isDemoMode]);
 
     const getOption = () => {
-        const maxVal = Math.max(...mapData.map(d => d.value), 10); // 如果为空，默认最大值为 10
+        const safeValues = mapData.map((d) => toSafeNumber(d.value, 0)).filter((v) => v >= 0);
+        const maxVal = safeValues.length ? Math.max(...safeValues, 10) : 10; // 如果为空，默认最大值为 10
 
         return {
             tooltip: {
@@ -156,7 +162,7 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) =
                 formatter: (params: any) => {
                     const code = params?.name as string;
                     const displayName = PROVINCE_DISPLAY[code] || code;
-                    const count = Number.isFinite(params?.value) ? params.value : 0;
+                    const count = toSafeNumber(params?.value, 0);
                     return `${displayName}<br/>识别数量: ${count} 辆`;
                 }
             },
