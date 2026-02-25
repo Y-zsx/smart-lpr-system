@@ -2,10 +2,10 @@ import React, { useEffect, useState } from 'react';
 import ReactECharts from 'echarts-for-react';
 import * as echarts from 'echarts';
 import { apiClient } from '../api/client';
-import { Map, Calendar, Database } from 'lucide-react';
+import { Map as MapIcon, Calendar, Database } from 'lucide-react';
 import { usePlateStore } from '../store/plateStore';
 
-const PROVINCE_MAP: Record<string, string[]> = {
+const PROVINCE_ALIASES: Record<string, string[]> = {
     '京': ['北京', '北京市'],
     '津': ['天津', '天津市'],
     '沪': ['上海', '上海市'],
@@ -38,6 +38,24 @@ const PROVINCE_MAP: Record<string, string[]> = {
     '宁': ['宁夏', '宁夏回族自治区'],
     '琼': ['海南', '海南省']
 };
+
+const PROVINCE_DISPLAY: Record<string, string> = (() => {
+    const result: Record<string, string> = {};
+    Object.entries(PROVINCE_ALIASES).forEach(([code, aliases]) => {
+        result[code] = aliases[1] || aliases[0] || code;
+    });
+    return result;
+})();
+
+const CHINA_NAME_TO_CODE: Record<string, string> = (() => {
+    const mapping: Record<string, string> = {};
+    Object.entries(PROVINCE_ALIASES).forEach(([code, aliases]) => {
+        aliases.forEach((name) => {
+            mapping[name] = code;
+        });
+    });
+    return mapping;
+})();
 
 interface PlateHeatmapProps {
     date?: string; // 可选的日期参数，undefined 表示总量模式
@@ -98,8 +116,8 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) =
             try {
                 if (settings.isDemoMode) {
                     // 生成模拟数据
-                    const mockData = Object.values(PROVINCE_MAP).map(province => ({
-                        name: province,
+                    const mockData = Object.keys(PROVINCE_ALIASES).map(code => ({
+                        name: code,
                         value: Math.floor(Math.random() * 500)
                     }));
                     setMapData(mockData);
@@ -110,14 +128,12 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) =
                     const timestamp = date ? new Date(date).getTime() : undefined;
                     const stats = await apiClient.getRegionStats(actualViewMode, timestamp);
                     // stats 格式为 [{province: '苏', count: 10}, ...]
-                    // 不同地图源省份命名可能是“江苏”或“江苏省”，这里同时生成别名确保都能匹配。
-                    const normalized = new Map<string, number>();
+                    // 统一按省份简称作为数据键，再通过 nameMap 把地图地名映射到简称。
+                    const normalized = new globalThis.Map<string, number>();
                     stats.forEach((item: any) => {
-                        const aliases = PROVINCE_MAP[item.province] || [item.province];
-                        aliases.forEach((name) => {
-                            if (!name) return;
-                            normalized.set(name, item.count);
-                        });
+                        const code = String(item?.province || '').trim();
+                        if (!code) return;
+                        normalized.set(code, Number(item?.count || 0));
                     });
                     setMapData(Array.from(normalized.entries()).map(([name, value]) => ({ name, value })));
                 }
@@ -137,7 +153,12 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) =
         return {
             tooltip: {
                 trigger: 'item',
-                formatter: '{b}<br/>识别数量: {c} 辆'
+                formatter: (params: any) => {
+                    const code = params?.name as string;
+                    const displayName = PROVINCE_DISPLAY[code] || code;
+                    const count = Number.isFinite(params?.value) ? params.value : 0;
+                    return `${displayName}<br/>识别数量: ${count} 辆`;
+                }
             },
             visualMap: {
                 min: 0,
@@ -155,6 +176,7 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) =
                     name: '车牌归属地',
                     type: 'map',
                     map: 'china',
+                    nameMap: CHINA_NAME_TO_CODE,
                     roam: true,
                     emphasis: {
                         label: {
@@ -178,7 +200,7 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) =
         <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm h-full flex flex-col">
             <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-                    <Map size={20} className="text-blue-600" />
+                    <MapIcon size={20} className="text-blue-600" />
                     车牌归属地热力图
                 </h3>
                 {date && (
