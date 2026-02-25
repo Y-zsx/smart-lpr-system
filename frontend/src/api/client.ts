@@ -1,4 +1,6 @@
-const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const runtimeOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+const isLocalRuntime = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(runtimeOrigin);
+const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || (isLocalRuntime ? 'http://localhost:8000' : runtimeOrigin);
 const TOKEN_KEY = 'smart_lpr_token';
 const DEFAULT_RETRY_TIMES = Math.max(0, Number(import.meta.env.VITE_API_RETRY_TIMES || 2));
 const DEFAULT_RETRY_BASE_MS = Math.max(50, Number(import.meta.env.VITE_API_RETRY_BASE_MS || 250));

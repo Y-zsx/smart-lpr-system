@@ -57,6 +57,8 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     const retryScheduledRef = useRef<boolean>(false);
     const MIN_CAPTURE_SHORT_EDGE = 540;
     const JPEG_CAPTURE_QUALITY = 0.95;
+    const isHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
+    const isInsecureHttpStream = (url?: string) => Boolean(url && url.startsWith('http://'));
 
     // 加载黑名单
     useEffect(() => {
@@ -156,6 +158,13 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         }
 
         if (!isLocal) {
+            if (isHttpsPage && isInsecureHttpStream(currentCamera?.url)) {
+                setError('当前页面为 HTTPS，摄像头流地址为 HTTP，浏览器会拦截。请将流地址改为 HTTPS。');
+                setHasPermission(false);
+                updateCameraStatus(currentCamera.id, 'offline');
+                return;
+            }
+
             // 远程流模式 - MJPEG 轮询刷新
             setHasPermission(true);
             setError('');
@@ -549,6 +558,13 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
             
             setError('');
         } else if (!isLocal && !isFile && currentCamera?.url) {
+            if (isHttpsPage && isInsecureHttpStream(currentCamera.url)) {
+                setError('当前页面为 HTTPS，摄像头流地址为 HTTP，浏览器会拦截。请将流地址改为 HTTPS。');
+                setHasPermission(false);
+                updateCameraStatus(currentCamera.id, 'offline');
+                return;
+            }
+
             // 网络流也需要立即加载预览
             setHasPermission(true);
             updateCameraStatus(currentCamera.id, 'online');
