@@ -7,6 +7,7 @@
 | 脚本 | 用途 | 使用场景 |
 |------|------|----------|
 | `smoke-check.ps1` | 后端与登录接口健康检查 | 启动服务后快速验证（Windows PowerShell） |
+| `deploy-frontend.sh` | 一键发布前端到 Nginx 静态目录 | 线上快速发布（Linux） |
 | `init_database.sql` | 初始化数据库和表结构 | 首次安装系统 |
 | `migrate_to_plate_records.sql` | 迁移到新的记录结构 | 系统升级 |
 | `verify_database.sql` | 验证数据库配置 | 检查数据库状态 |
@@ -22,6 +23,25 @@
 ```
 
 通过则退出码为 0，否则为 1。完整功能测试见 [docs/TESTING.md](../docs/TESTING.md)。
+
+### 前端一键发布（Linux）
+
+默认发布到 `/var/www/smart-lpr` 并重载 Nginx：
+
+```bash
+chmod +x ./scripts/deploy-frontend.sh
+./scripts/deploy-frontend.sh
+```
+
+可选参数通过环境变量覆盖：
+
+```bash
+# 首次部署时顺便安装依赖
+INSTALL_DEPS=1 ./scripts/deploy-frontend.sh
+
+# 自定义发布目录或站点 URL
+DEPLOY_ROOT=/var/www/smart-lpr SITE_URL=https://smartlpr.cloud ./scripts/deploy-frontend.sh
+```
 
 ## 🚀 快速使用
 
