@@ -12,7 +12,7 @@ npm install
 
 ### 2. 配置数据库
 
-创建 `.env` 文件：
+复制并编辑环境变量：
 
 ```env
 PORT=8000
@@ -21,6 +21,10 @@ DB_PORT=3306
 DB_USER=root
 DB_PASSWORD=your_password
 DB_NAME=smart_lpr
+AI_SERVICE_URL=http://localhost:8001
+AI_RECOGNIZE_TIMEOUT_MS=5000
+AI_RECOGNIZE_RETRIES=1
+MAX_FILE_SIZE=10485760
 ```
 
 ### 3. 启动服务

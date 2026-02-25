@@ -11,6 +11,16 @@ python main.py
 
 服务地址：http://localhost:8001
 
+## 环境变量
+
+- `AI_CORS_ORIGINS`：允许跨域来源，逗号分隔（默认：`http://localhost:5173,http://localhost:3000`）
+- 示例：
+
+```bash
+set AI_CORS_ORIGINS=http://localhost:5173,https://your-domain.com
+python main.py
+```
+
 ## 目录结构
 
 - `app/` — 服务核心（main.py）；`evaluation/` — 评估脚本（evaluate.py）

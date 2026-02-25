@@ -13,7 +13,22 @@ import * as IamController from '../modules/iam/controller';
 import { applyDataScope, requireAuth, requirePermission } from '../modules/auth';
 
 const router = Router();
-const upload = multer({ dest: path.join(__dirname, '../../uploads/temp') });
+const MAX_FILE_SIZE = Math.max(1024 * 1024, Number(process.env.MAX_FILE_SIZE || 10 * 1024 * 1024));
+const upload = multer({
+    dest: path.join(__dirname, '../../uploads/temp'),
+    limits: {
+        fileSize: MAX_FILE_SIZE,
+        files: 1
+    },
+    fileFilter: (_req, file, cb) => {
+        const isImage = file.mimetype.startsWith('image/');
+        if (!isImage) {
+            cb(new Error('Only image files are allowed'));
+            return;
+        }
+        cb(null, true);
+    }
+});
 
 // Auth
 router.post('/auth/login', AuthController.login);

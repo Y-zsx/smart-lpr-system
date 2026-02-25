@@ -1,10 +1,11 @@
-from fastapi import FastAPI, File, UploadFile, Query
+from fastapi import FastAPI, File, HTTPException, UploadFile, Query
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import hyperlpr3 as lpr3
 import cv2
 import numpy as np
 import re
+import os
 from typing import Dict, List, Tuple
 from collections import Counter, deque
 from threading import Lock
@@ -18,9 +19,17 @@ except ImportError:
 
 app = FastAPI()
 
+cors_origins = [
+    origin.strip()
+    for origin in os.getenv("AI_CORS_ORIGINS", "http://localhost:5173,http://localhost:3000").split(",")
+    if origin.strip()
+]
+if not cors_origins:
+    cors_origins = ["http://localhost:5173", "http://localhost:3000"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -312,18 +321,22 @@ async def recognize(
     max_plates: int = Query(0, ge=0, description="最多返回数量，0 表示不限制"),
     stream_key: str = Query("default", description="同一路视频流标识，用于连续帧投票稳定中文首字"),
 ):
+    started_at = time.time()
     try:
         contents = await file.read()
         if not contents:
-            return {"error": "Empty file uploaded", "plates": []}
+            raise HTTPException(status_code=400, detail="Empty file uploaded")
 
         nparr = np.frombuffer(contents, np.uint8)
         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         if image is None or image.size == 0:
-            return {"error": "Failed to decode image. Please ensure the file is a valid image format.", "plates": []}
+            raise HTTPException(
+                status_code=400,
+                detail="Failed to decode image. Please ensure the file is a valid image format.",
+            )
         h, w = image.shape[:2]
         if h < _MIN_IMAGE_EDGE or w < _MIN_IMAGE_EDGE:
-            return {"error": "Image is too small for reliable recognition.", "plates": []}
+            raise HTTPException(status_code=422, detail="Image is too small for reliable recognition.")
 
         variants = _build_variants(image)
         candidates: List[Dict] = []
@@ -368,13 +381,27 @@ async def recognize(
             if "is_valid" in plate:
                 plate.pop("is_valid", None)
 
+        elapsed_ms = int((time.time() - started_at) * 1000)
+        print(
+            "[AI] recognize",
+            {
+                "stream_key": stream_key,
+                "min_confidence": min_confidence,
+                "max_plates": max_plates,
+                "variants": len(variants),
+                "plate_count": len(plates),
+                "elapsed_ms": elapsed_ms,
+            },
+        )
         return {"plates": plates}
 
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
 
         traceback.print_exc()
-        return {"error": str(e), "plates": []}
+        raise HTTPException(status_code=500, detail=f"Recognition failed: {str(e)}")
 
 
 def run():

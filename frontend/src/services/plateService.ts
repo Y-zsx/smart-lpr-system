@@ -7,6 +7,11 @@ export interface RecognizeResult {
     plates: LicensePlate[];
 }
 
+export interface RecognizeOptions {
+    minConfidence?: number;
+    maxPlates?: number;
+}
+
 export const plateService = {
     /**
      * 上传图片文件或 Blob 对象进行车牌识别（支持多车牌）
@@ -22,7 +27,8 @@ export const plateService = {
         source: string,
         cameraId?: string,
         cameraName?: string,
-        location?: string
+        location?: string,
+        options?: RecognizeOptions
     ): Promise<RecognizeResult> => {
         // 根据环境变量判断是否使用模拟数据
         if (import.meta.env.VITE_USE_MOCK === 'true') {
@@ -36,6 +42,12 @@ export const plateService = {
         if (cameraId) formData.append('cameraId', cameraId);
         if (cameraName) formData.append('cameraName', cameraName);
         if (location) formData.append('location', location);
+        if (typeof options?.minConfidence === 'number') {
+            formData.append('minConfidence', String(options.minConfidence));
+        }
+        if (typeof options?.maxPlates === 'number') {
+            formData.append('maxPlates', String(options.maxPlates));
+        }
 
         try {
             const headers = getHeaders();

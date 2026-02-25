@@ -9,6 +9,24 @@ import { AuthenticatedRequest } from '../auth';
 import { filterPlateGroupsByScope } from '../../utils/dataScope';
 import { isValidChinesePlateNumber } from '../../utils/plateValidation';
 
+const AI_SERVICE_URL = (process.env.AI_SERVICE_URL || 'http://localhost:8001').trim().replace(/\/$/, '');
+const AI_RECOGNIZE_TIMEOUT_MS = Math.max(500, Number(process.env.AI_RECOGNIZE_TIMEOUT_MS || 5000));
+const AI_RECOGNIZE_RETRIES = Math.max(0, Number(process.env.AI_RECOGNIZE_RETRIES || 1));
+
+const shouldRetryAiError = (error: unknown): boolean => {
+    if (!axios.isAxiosError(error)) {
+        return false;
+    }
+    // 超时、网络抖动、服务端错误做一次快速重试
+    if (error.code === 'ECONNABORTED' || !error.response) {
+        return true;
+    }
+    const status = error.response.status;
+    return status >= 500 || status === 429;
+};
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export const getPlates = async (req: AuthenticatedRequest, res: Response) => {
     try {
         const { start, end, type, plateNumber, groupBy } = req.query;
@@ -128,8 +146,9 @@ export const savePlate = async (req: Request, res: Response) => {
 };
 
 export const recognizePlate = async (req: Request, res: Response) => {
+    const file = req.file;
+    const requestStartedAt = Date.now();
     try {
-        const file = req.file;
         if (!file) {
             res.status(400).json({ message: 'No file uploaded' });
             return;
@@ -139,20 +158,52 @@ export const recognizePlate = async (req: Request, res: Response) => {
         const cameraName = req.body.cameraName as string | undefined;
         const location = req.body.location as string | undefined;
         const regionCode = req.body.regionCode as string | undefined;
+        const minConfidenceRaw = Number(req.body.minConfidence);
+        const maxPlatesRaw = Number(req.body.maxPlates);
+        const minConfidence = Number.isFinite(minConfidenceRaw)
+            ? Math.min(Math.max(minConfidenceRaw, 0), 1)
+            : undefined;
+        const maxPlates = Number.isFinite(maxPlatesRaw)
+            ? Math.max(0, Math.floor(maxPlatesRaw))
+            : undefined;
 
         try {
             const formData = new FormData();
             formData.append('file', fs.createReadStream(file.path));
             const streamKey = cameraId || cameraName || 'default';
+            const recognizeUrl = `${AI_SERVICE_URL}/recognize`;
+            let aiResponse: { data: { error?: string; plates?: Array<{ number: string; type: string; confidence: number; rect?: { x: number; y: number; w: number; h: number } }> } } | null = null;
+            let lastError: unknown;
 
-            const aiResponse = await axios.post('http://localhost:8001/recognize', formData, {
-                headers: { ...formData.getHeaders() },
-                params: { stream_key: streamKey }
-            });
+            for (let attempt = 0; attempt <= AI_RECOGNIZE_RETRIES; attempt++) {
+                try {
+                    aiResponse = await axios.post<{ error?: string; plates?: Array<{ number: string; type: string; confidence: number; rect?: { x: number; y: number; w: number; h: number } }> }>(recognizeUrl, formData, {
+                        headers: { ...formData.getHeaders() },
+                        params: {
+                            stream_key: streamKey,
+                            ...(typeof minConfidence === 'number' ? { min_confidence: minConfidence } : {}),
+                            ...(typeof maxPlates === 'number' ? { max_plates: maxPlates } : {})
+                        },
+                        timeout: AI_RECOGNIZE_TIMEOUT_MS
+                    });
+                    lastError = null;
+                    break;
+                } catch (error) {
+                    lastError = error;
+                    if (attempt >= AI_RECOGNIZE_RETRIES || !shouldRetryAiError(error)) {
+                        throw error;
+                    }
+                    await sleep(150);
+                }
+            }
+
+            if (!aiResponse) {
+                throw lastError || new Error('AI recognition request failed');
+            }
 
             if (aiResponse.data.error) {
                 console.error('AI Service returned error:', aiResponse.data.error);
-                res.status(500).json({
+                res.status(502).json({
                     message: 'AI recognition error',
                     error: aiResponse.data.error
                 });
@@ -160,6 +211,16 @@ export const recognizePlate = async (req: Request, res: Response) => {
             }
 
             const aiPlates = aiResponse.data.plates || [];
+            console.info(
+                '[AI] recognize success',
+                JSON.stringify({
+                    streamKey,
+                    minConfidence,
+                    maxPlates,
+                    count: aiPlates.length,
+                    elapsedMs: Date.now() - requestStartedAt
+                })
+            );
             const plates: LicensePlate[] = aiPlates.map((p: { number: string; type: string; confidence: number; rect?: { x: number; y: number; w: number; h: number } }) => ({
                 id: uuidv4(),
                 number: p.number,
@@ -178,12 +239,28 @@ export const recognizePlate = async (req: Request, res: Response) => {
             res.json({ plates });
         } catch (aiError) {
             console.error('AI Service Error:', aiError);
-            res.status(503).json({ message: 'AI Service unavailable. Please ensure python service is running on port 8001.' });
+            if (axios.isAxiosError(aiError) && aiError.code === 'ECONNABORTED') {
+                res.status(504).json({ message: `AI Service timeout (${AI_RECOGNIZE_TIMEOUT_MS}ms)` });
+                return;
+            }
+            res.status(503).json({
+                message: 'AI Service unavailable. Please ensure python service is running.',
+                aiServiceUrl: AI_SERVICE_URL
+            });
             return;
         }
     } catch (error) {
         console.error('Recognition error:', error);
         res.status(500).json({ message: 'Error recognizing plate' });
+    } finally {
+        console.info('[AI] recognize request done', JSON.stringify({ elapsedMs: Date.now() - requestStartedAt }));
+        if (file?.path) {
+            try {
+                await fs.remove(file.path);
+            } catch (cleanupError) {
+                console.warn('Failed to cleanup temp upload file:', file.path, cleanupError);
+            }
+        }
     }
 };
 

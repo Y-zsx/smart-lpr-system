@@ -376,7 +376,8 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                         blob, 'stream',
                         currentCamera?.id || '',
                         currentCamera?.name || '未知摄像头',
-                        currentCamera?.location || currentCamera?.name || '未知位置'
+                        currentCamera?.location || currentCamera?.name || '未知位置',
+                        { minConfidence: settings.confidenceThreshold }
                     );
 
                     const valid = (plates || []).filter(

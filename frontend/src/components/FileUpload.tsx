@@ -21,7 +21,7 @@ export const FileUpload: React.FC = () => {
     const [files, setFiles] = useState<FileItem[]>([]);
     const [isProcessing, setIsProcessing] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const { addPlate } = usePlateStore();
+    const { addPlate, settings } = usePlateStore();
 
     // Cleanup URLs on unmount
     useEffect(() => {
@@ -80,7 +80,14 @@ export const FileUpload: React.FC = () => {
             setFiles(prev => prev.map(f => f.id === item.id ? { ...f, status: 'processing' } : f));
 
             try {
-                const { plates } = await plateService.recognizeFromFile(item.file, 'upload');
+                const { plates } = await plateService.recognizeFromFile(
+                    item.file,
+                    'upload',
+                    undefined,
+                    undefined,
+                    undefined,
+                    { minConfidence: settings.confidenceThreshold }
+                );
 
                 if (!plates || plates.length === 0) {
                     setFiles(prev => prev.map(f => f.id === item.id ? {
