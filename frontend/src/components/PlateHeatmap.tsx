@@ -21,6 +21,12 @@ interface PlateHeatmapProps {
 }
 
 export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) => {
+    const CHINA_GEOJSON_SOURCES = [
+        // Prefer a stable CDN first; some origins may deny requests by Referer ACL.
+        'https://fastly.jsdelivr.net/npm/echarts@5/map/json/china.json',
+        'https://cdn.jsdelivr.net/npm/echarts@5/map/json/china.json',
+        'https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json'
+    ];
     const [viewMode, setViewMode] = useState<'daily' | 'total'>('total');
     const [mapData, setMapData] = useState<{ name: string, value: number }[]>([]);
     const [loading, setLoading] = useState(true);
@@ -32,10 +38,25 @@ export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) =
         const loadMap = async () => {
             try {
                 if (!echarts.getMap('china')) {
-                    const response = await fetch('https://geo.datav.aliyun.com/areas_v3/bound/100000_full.json');
-                    const geoJson = await response.json();
-                    echarts.registerMap('china', geoJson);
-                    setGeoJsonLoaded(true);
+                    let loaded = false;
+                    for (const url of CHINA_GEOJSON_SOURCES) {
+                        try {
+                            const response = await fetch(url);
+                            if (!response.ok) {
+                                continue;
+                            }
+                            const geoJson = await response.json();
+                            echarts.registerMap('china', geoJson);
+                            setGeoJsonLoaded(true);
+                            loaded = true;
+                            break;
+                        } catch (_err) {
+                            // Try next source.
+                        }
+                    }
+                    if (!loaded) {
+                        throw new Error('all_geojson_sources_failed');
+                    }
                 } else {
                     setGeoJsonLoaded(true);
                 }
