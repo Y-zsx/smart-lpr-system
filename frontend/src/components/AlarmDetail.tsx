@@ -86,64 +86,54 @@ const AnnotatedPlateImage: React.FC<AnnotatedPlateImageProps> = ({ imageUrl, rec
     const [imageSize, setImageSize] = React.useState<{ w: number; h: number }>({ w: 0, h: 0 });
     const colors = PLATE_TYPE_COLORS[plateType] ?? PLATE_TYPE_COLORS.blue;
 
-    React.useEffect(() => {
-        const img = new Image();
-        img.onload = () => {
-            setImageSize({
-                w: img.naturalWidth || 1,
-                h: img.naturalHeight || 1
-            });
-        };
-        img.src = imageUrl;
-    }, [imageUrl]);
-
-    if (!imageSize.w || !imageSize.h) {
-        return <div className={`bg-gray-200 animate-pulse ${className || ''}`} />;
-    }
-
-    const safeRect = rect && rect.w > 0 && rect.h > 0 ? rect : null;
-    const labelHeight = Math.max(18, Math.round(imageSize.h * 0.04));
+    const safeRect = rect && rect.w > 0 && rect.h > 0 && imageSize.w > 0 && imageSize.h > 0 ? rect : null;
+    const labelHeight = imageSize.h > 0 ? Math.max(18, Math.round(imageSize.h * 0.04)) : 18;
     const labelY = safeRect ? Math.max(0, safeRect.y - labelHeight - 2) : 0;
 
     return (
-        <svg
-            viewBox={`0 0 ${imageSize.w} ${imageSize.h}`}
-            className={className}
-            preserveAspectRatio="xMidYMid meet"
-        >
-            <image href={imageUrl} x="0" y="0" width={imageSize.w} height={imageSize.h} />
-            {safeRect && (
-                <>
-                    <rect
-                        x={safeRect.x}
-                        y={safeRect.y}
-                        width={safeRect.w}
-                        height={safeRect.h}
-                        fill="none"
-                        stroke={colors.stroke}
-                        strokeWidth={Math.max(2, Math.round(imageSize.w * 0.003))}
-                    />
-                    <rect
-                        x={safeRect.x}
-                        y={labelY}
-                        width={Math.max(safeRect.w, plateNumber.length * labelHeight * 0.6)}
-                        height={labelHeight}
-                        fill={colors.fill}
-                        opacity="0.95"
-                        rx={Math.max(2, Math.round(labelHeight * 0.2))}
-                    />
-                    <text
-                        x={safeRect.x + 6}
-                        y={labelY + labelHeight * 0.72}
-                        fill={colors.text}
-                        fontSize={Math.max(12, Math.round(labelHeight * 0.6))}
-                        fontWeight="700"
-                    >
-                        {plateNumber}
-                    </text>
-                </>
-            )}
-        </svg>
+        <div className={`relative w-full h-full flex items-center justify-center ${className || ''}`}>
+            <div
+                className="relative max-w-full max-h-full"
+                style={imageSize.w && imageSize.h ? { aspectRatio: imageSize.w / imageSize.h, width: '100%', height: 'auto', maxHeight: '100%' } : { width: '100%', height: '100%' }}
+            >
+                <img
+                    src={imageUrl}
+                    alt=""
+                    className="w-full h-full object-contain block"
+                    onLoad={(e) => {
+                        const img = e.currentTarget;
+                        setImageSize({ w: img.naturalWidth || 1, h: img.naturalHeight || 1 });
+                    }}
+                />
+                {safeRect && (
+                    <>
+                        <div
+                            className="absolute border-2 box-border pointer-events-none"
+                            style={{
+                                left: `${(safeRect.x / imageSize.w) * 100}%`,
+                                top: `${(safeRect.y / imageSize.h) * 100}%`,
+                                width: `${(safeRect.w / imageSize.w) * 100}%`,
+                                height: `${(safeRect.h / imageSize.h) * 100}%`,
+                                borderColor: colors.stroke
+                            }}
+                        />
+                        <div
+                            className="absolute text-white text-xs font-bold px-1.5 py-0.5 rounded flex items-center pointer-events-none"
+                            style={{
+                                left: `${(safeRect.x / imageSize.w) * 100}%`,
+                                top: `${(labelY / imageSize.h) * 100}%`,
+                                minWidth: `${(Math.max(safeRect.w, plateNumber.length * 10) / imageSize.w) * 100}%`,
+                                height: `${(labelHeight / imageSize.h) * 100}%`,
+                                backgroundColor: colors.fill,
+                                fontSize: 'clamp(10px, 2.5vw, 14px)'
+                            }}
+                        >
+                            {plateNumber}
+                        </div>
+                    </>
+                )}
+            </div>
+        </div>
     );
 };
 

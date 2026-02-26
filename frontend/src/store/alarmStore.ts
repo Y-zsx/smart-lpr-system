@@ -11,6 +11,7 @@ export interface Alarm {
     timestamp: number;
     is_read: number;
     plate_number: string;
+    camera_id?: string;
     image_path?: string;
     plate_type?: PlateType;
     rect?: { x: number; y: number; w: number; h: number };

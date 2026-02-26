@@ -25,6 +25,24 @@ interface PathPoint {
     severity: 'high' | 'medium' | 'low';
 }
 
+/** 同一地址多次打开路径重现时复用地理编码结果，避免高德 API 时序/限流导致每次点数不一致 */
+const GEOCODE_CACHE_MAX = 300;
+const geocodeCache = new Map<string, { lng: number; lat: number }>();
+
+function getCachedGeocode(address: string): { lng: number; lat: number } | null {
+    const key = address.trim();
+    return geocodeCache.get(key) ?? null;
+}
+
+function setCachedGeocode(address: string, coord: { lng: number; lat: number }) {
+    const key = address.trim();
+    if (geocodeCache.size >= GEOCODE_CACHE_MAX) {
+        const firstKey = geocodeCache.keys().next().value;
+        if (firstKey !== undefined) geocodeCache.delete(firstKey);
+    }
+    geocodeCache.set(key, coord);
+}
+
 export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, alarms, onClose }) => {
     const mapContainerRef = useRef<HTMLDivElement>(null);
     const mapInstanceRef = useRef<any>(null);
@@ -33,8 +51,16 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
     const geocoderRef = useRef<any>(null);
     const mapInitializedRef = useRef<boolean>(false);
     const processingRef = useRef<boolean>(false);
+    /** 每次打开弹窗只构建一次路径，避免地图 onMapReady 多路径触发导致点数不一致 */
+    const pathBuiltForSessionRef = useRef<boolean>(false);
+    const processAlarmsRef = useRef<(() => Promise<void>) | null>(null);
+    const playTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const { cameras } = useCameraStore();
     const [allCameras, setAllCameras] = useState<any[]>([]);
+    const [camerasFetched, setCamerasFetched] = useState(false);
+    const [mapReady, setMapReady] = useState(false);
+    /** 高德脚本已加载，用于在未等地图初始化时也能做地址解析 */
+    const [amapScriptLoaded, setAmapScriptLoaded] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [pathPoints, setPathPoints] = useState<PathPoint[]>([]);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -120,204 +146,212 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
             const lat = Number(matchedCamera.latitude);
             if (!isNaN(lng) && !isNaN(lat) && isFinite(lng) && isFinite(lat) &&
                 lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90) {
-                console.log(`从摄像头匹配到位置: ${location} -> (${lng}, ${lat})`);
                 return { lng: lng, lat: lat };
             }
         }
 
-        // 3. 如果都没有，进行地理编码
-        if (!window.AMap) {
-            console.warn('高德地图未加载');
-            return null;
-        }
+        // 3. 使用缓存：同一地址多次打开时结果一致，避免每次点击点数不同
+        const cached = getCachedGeocode(location);
+        if (cached) return cached;
+
+        // 4. 高德：先 PlaceSearch，失败则用 Geocoder 地理编码兜底，保证同一地址结果稳定、成功率更高
+        if (!window.AMap) return null;
+
+        const tryResolve = (lng: number, lat: number): boolean => {
+            if (!isNaN(lng) && !isNaN(lat) && isFinite(lng) && isFinite(lat) &&
+                lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90) {
+                setCachedGeocode(location, { lng, lat });
+                return true;
+            }
+            return false;
+        };
 
         return new Promise((resolve) => {
-            try {
-                // 使用 PlaceSearch 进行地点搜索（更可靠）
-                if (!window.AMap.PlaceSearch) {
-                    // 如果 PlaceSearch 未加载，使用 Geocoder
-                    if (!geocoderRef.current) {
-                        console.warn('地理编码器未初始化');
-                        resolve(null);
-                        return;
-                    }
+            const done = (coord: { lng: number; lat: number } | null) => {
+                resolve(coord);
+            };
 
-                    // 使用 Geocoder 的地理编码方法
-                    geocoderRef.current.getLocation(location, (status: string, result: any) => {
-                        if (status === 'complete' && result && result.geocodes && result.geocodes.length > 0) {
-                            const loc = result.geocodes[0].location;
-                            const lng = Number(loc.lng);
-                            const lat = Number(loc.lat);
-                            // 验证坐标有效性
-                            if (!isNaN(lng) && !isNaN(lat) && isFinite(lng) && isFinite(lat) &&
-                                lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90) {
-                                resolve({ lng: lng, lat: lat });
-                            } else {
-                                console.warn(`地理编码返回无效坐标: ${location}`, { lng, lat });
-                                resolve(null);
-                            }
-                        } else {
-                            console.warn(`地理编码失败: ${location}`, status);
-                            resolve(null);
+            const tryGeocoder = () => {
+                if (!geocoderRef.current) {
+                    done(null);
+                    return;
+                }
+                geocoderRef.current.getLocation(location, (status: string, result: any) => {
+                    if (status === 'complete' && result?.geocodes?.length > 0) {
+                        const loc = result.geocodes[0].location;
+                        if (tryResolve(Number(loc.lng), Number(loc.lat))) {
+                            done({ lng: Number(loc.lng), lat: Number(loc.lat) });
+                            return;
                         }
-                    });
-                } else {
-                    // 使用 PlaceSearch 搜索地点
+                    }
+                    done(null);
+                });
+            };
+
+            try {
+                if (window.AMap.PlaceSearch) {
                     const placeSearch = new window.AMap.PlaceSearch({
                         city: '全国',
                         citylimit: false,
                         pageSize: 1
                     });
-
                     placeSearch.search(location, (status: string, result: any) => {
-                        if (status === 'complete' && result && result.poiList && result.poiList.pois && result.poiList.pois.length > 0) {
+                        if (status === 'complete' && result?.poiList?.pois?.length > 0) {
                             const poi = result.poiList.pois[0];
-                            const lng = Number(poi.location.lng);
-                            const lat = Number(poi.location.lat);
-                            // 验证坐标有效性
-                            if (!isNaN(lng) && !isNaN(lat) && isFinite(lng) && isFinite(lat) &&
-                                lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90) {
-                                resolve({ lng: lng, lat: lat });
-                            } else {
-                                console.warn(`地点搜索返回无效坐标: ${location}`, { lng, lat });
-                                resolve(null);
+                            const lng = Number(poi.location?.lng);
+                            const lat = Number(poi.location?.lat);
+                            if (tryResolve(lng, lat)) {
+                                done({ lng, lat });
+                                return;
                             }
-                        } else {
-                            console.warn(`地点搜索失败: ${location}`, status);
-                            resolve(null);
                         }
+                        // PlaceSearch 失败（error 或无结果）时用 Geocoder 兜底，长地址更适合地理编码
+                        tryGeocoder();
                     });
+                } else {
+                    tryGeocoder();
                 }
-            } catch (error) {
-                console.error('地理编码异常:', error);
-                resolve(null);
+            } catch (_) {
+                tryGeocoder();
             }
         });
     }, [allCameras]);
 
-    // 处理告警数据，提取路径点
+    // 处理告警数据，提取路径点：先清空再并行解析，全部完成后再去重、一次性设点，保证每次打开结果稳定
     const processAlarms = useCallback(async () => {
-        // 防止重复处理
-        if (processingRef.current) {
-            console.log('正在处理中，跳过重复调用');
-            return;
-        }
+        if (processingRef.current) return;
         processingRef.current = true;
-        
+        setPathPoints([]);
+        setMapError(null);
+
         try {
-            // 1. 按时间排序（从早到晚），并过滤有效位置信息
+            // 有经纬度、或有关联摄像头、或有有效地址文案的告警才参与路径（优先用坐标，减少地址反查）
             const sortedAlarms = [...alarms]
-            .filter(alarm => {
-                // 过滤掉无效的位置信息
-                if (!alarm.location) return false;
-                // 过滤掉文件名（包含 .mp4, .jpg 等扩展名）
-                if (/\.(mp4|jpg|jpeg|png|gif|bmp|webp|avi|mov|wmv|flv|mkv)$/i.test(alarm.location)) {
-                    return false;
-                }
-                // 过滤掉纯数字或过短的位置信息
-                if (/^\d+$/.test(alarm.location) || alarm.location.length < 3) {
-                    return false;
-                }
-                return true;
-            })
-            .sort((a, b) => a.timestamp - b.timestamp);
+                .filter(alarm => {
+                    if (alarm.latitude != null && alarm.longitude != null) return true;
+                    if (alarm.camera_id) return true;
+                    if (!alarm.location) return false;
+                    if (/\.(mp4|jpg|jpeg|png|gif|bmp|webp|avi|mov|wmv|flv|mkv)$/i.test(alarm.location)) return false;
+                    if (/^\d+$/.test(alarm.location) || alarm.location.length < 3) return false;
+                    return true;
+                })
+                .sort((a, b) => a.timestamp - b.timestamp);
 
-        if (sortedAlarms.length === 0) {
-            setMapError('没有包含位置信息的告警记录');
-            setIsLoading(false);
-            return;
-        }
-
-        // 2. 解析所有位置
-        const points: PathPoint[] = [];
-        let successCount = 0;
-        let failCount = 0;
-        
-        for (const alarm of sortedAlarms) {
-            let location: { lng: number; lat: number } | null = null;
-            
-            // 优先使用告警表中保存的经纬度
-            if (alarm.longitude !== undefined && alarm.latitude !== undefined) {
-                const lng = Number(alarm.longitude);
-                const lat = Number(alarm.latitude);
-                if (!isNaN(lng) && !isNaN(lat) &&
-                    isFinite(lng) && isFinite(lat) &&
-                    lng >= -180 && lng <= 180 &&
-                    lat >= -90 && lat <= 90) {
-                    location = { lng: lng, lat: lat };
-                    console.log(`使用告警表中的坐标: (${lng}, ${lat})`);
-                }
-            } 
-            // 如果没有保存的坐标，尝试解析位置文本
-            else if (alarm.location) {
-                location = await parseLocation(alarm.location);
+            if (sortedAlarms.length === 0) {
+                setMapError('没有包含位置信息的告警记录');
+                setIsLoading(false);
+                return;
             }
-            
-            // 验证坐标是否有效（不是 NaN 且在合理范围内），并确保是数字类型
-            if (location) {
+
+            // 解析坐标优先级：1) 告警自带经纬度 2) 关联摄像头的经纬度 3) 地址地理编码（PlaceSearch + Geocoder 兜底）
+            const resolved = await Promise.all(
+                sortedAlarms.map(async (alarm): Promise<{ alarm: typeof alarm; location: { lng: number; lat: number } | null }> => {
+                    let location: { lng: number; lat: number } | null = null;
+                    if (alarm.longitude !== undefined && alarm.latitude !== undefined) {
+                        const lng = Number(alarm.longitude);
+                        const lat = Number(alarm.latitude);
+                        if (!isNaN(lng) && !isNaN(lat) && isFinite(lng) && isFinite(lat) &&
+                            lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90) {
+                            location = { lng, lat };
+                        }
+                    }
+                    if (!location && alarm.camera_id && allCameras.length > 0) {
+                        const cam = allCameras.find((c: { id?: string }) => String(c.id) === String(alarm.camera_id));
+                        if (cam?.latitude != null && cam?.longitude != null) {
+                            const lng = Number(cam.longitude);
+                            const lat = Number(cam.latitude);
+                            if (!isNaN(lng) && !isNaN(lat) && lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90) {
+                                location = { lng, lat };
+                            }
+                        }
+                    }
+                    if (!location && alarm.location) {
+                        const parsed = parseLocation(alarm.location).catch(() => null);
+                        location = await Promise.race([
+                            parsed,
+                            new Promise<null>(r => setTimeout(() => r(null), 8000))
+                        ]);
+                    }
+                    return { alarm, location };
+                })
+            );
+
+            const points: PathPoint[] = [];
+            for (const { alarm, location } of resolved) {
+                if (!location) continue;
                 const lng = Number(location.lng);
                 const lat = Number(location.lat);
-                
-                if (!isNaN(lng) && !isNaN(lat) &&
-                    isFinite(lng) && isFinite(lat) &&
-                    lng >= -180 && lng <= 180 &&
-                    lat >= -90 && lat <= 90) {
+                if (!isNaN(lng) && !isNaN(lat) && isFinite(lng) && isFinite(lat) &&
+                    lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90) {
                     points.push({
-                        lng: lng,  // 确保是数字类型
-                        lat: lat,  // 确保是数字类型
+                        lng,
+                        lat,
                         address: alarm.location || '未知位置',
                         timestamp: alarm.timestamp,
                         alarmId: alarm.id,
                         severity: alarm.severity
                     });
-                    successCount++;
-                } else {
-                    failCount++;
-                    console.warn(`无法解析位置: ${alarm.location || '无位置信息'}`, { lng, lat, original: location });
                 }
-            } else {
-                failCount++;
-                console.warn(`无法解析位置: ${alarm.location || '无位置信息'}`);
             }
-        }
-        
-        console.log(`位置解析完成: 成功 ${successCount} 个, 失败 ${failCount} 个`);
 
-        if (points.length === 0) {
-            setMapError('无法解析任何位置信息');
-            setIsLoading(false);
-            return;
-        }
+            if (points.length === 0) {
+                setMapError('无法解析任何位置信息');
+                setIsLoading(false);
+                return;
+            }
 
-            // 3. 应用防抖算法
             const deduplicatedPoints = deduplicatePathPoints(points);
             setPathPoints(deduplicatedPoints);
             setIsLoading(false);
         } finally {
             processingRef.current = false;
         }
-    }, [alarms, parseLocation, deduplicatePathPoints]);
+    }, [alarms, allCameras, parseLocation, deduplicatePathPoints]);
 
-    // 加载摄像头列表（用于匹配位置）
+    // 加载摄像头列表（用于匹配位置）；完成后置位 camerasFetched，保证路径只构建一次且数据完整
     useEffect(() => {
+        let cancelled = false;
         const fetchCameras = async () => {
             try {
                 const response = await apiClient.fetch('/api/cameras');
+                if (cancelled) return;
                 if (response.ok) {
                     const camerasList = await response.json();
-                    setAllCameras(camerasList);
+                    setAllCameras(Array.isArray(camerasList) ? camerasList : []);
                 } else {
-                    // 如果API失败，使用本地存储的摄像头信息
-                    setAllCameras(cameras);
+                    setAllCameras(Array.isArray(cameras) ? cameras : []);
                 }
             } catch (error) {
-                console.warn('获取摄像头列表失败，将使用本地存储的摄像头信息:', error);
-                // 如果API失败，使用本地存储的摄像头信息
-                setAllCameras(cameras);
+                if (!cancelled) {
+                    console.warn('获取摄像头列表失败，将使用本地存储的摄像头信息:', error);
+                    setAllCameras(Array.isArray(cameras) ? cameras : []);
+                }
+            } finally {
+                if (!cancelled) setCamerasFetched(true);
             }
         };
         fetchCameras();
+        return () => { cancelled = true; };
     }, [cameras]);
+
+    useEffect(() => {
+        processAlarmsRef.current = processAlarms;
+    }, [processAlarms]);
+
+    // 切换车牌或首次打开：清空旧结果、允许重新构建，避免沿用上一次的 0 点或错误提示
+    useEffect(() => {
+        pathBuiltForSessionRef.current = false;
+        setPathPoints([]);
+        setMapError(null);
+        setIsLoading(true);
+    }, [plateNumber]);
+
+    // 途经点唯一入口：摄像头 + 高德脚本 + 地图与插件就绪 后只构建一次，避免首次解析失败与每次结果不一致
+    useEffect(() => {
+        if (alarms.length === 0 || !camerasFetched || !amapScriptLoaded || !mapReady || pathBuiltForSessionRef.current) return;
+        pathBuiltForSessionRef.current = true;
+        processAlarmsRef.current?.();
+    }, [plateNumber, camerasFetched, amapScriptLoaded, mapReady, alarms.length]);
 
     // 加载高德地图
     useEffect(() => {
@@ -341,7 +375,19 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
             
             // 防止重复初始化
             if (mapInitializedRef.current) {
-                console.log('地图已初始化，跳过重复初始化');
+                // 复用已有地图时：加载插件并标记就绪；若插件回调不触发则超时兜底，避免一直转圈
+                if (!geocoderRef.current && typeof window.AMap.plugin === 'function') {
+                    const done = () => setMapReady(true);
+                    window.AMap.plugin(['AMap.Geocoder', 'AMap.PlaceSearch'], () => {
+                        try {
+                            geocoderRef.current = new window.AMap.Geocoder({ city: '全国', timeout: 5000 });
+                        } catch (_) {}
+                        done();
+                    });
+                    setTimeout(done, 600);
+                    return;
+                }
+                setMapReady(true);
                 return;
             }
 
@@ -357,36 +403,31 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
                 mapInstanceRef.current = map;
                 mapInitializedRef.current = true;
                 
-                // 等待地图完全加载
+                // 等待地图完全加载后加载插件并标记 mapReady；插件回调不触发时 600ms 兜底，避免一直转圈
                 const onMapReady = () => {
-                    console.log('地图加载完成');
-                    // 加载地理编码和地点搜索插件
+                    const done = () => setMapReady(true);
+                    if (typeof window.AMap.plugin !== 'function') {
+                        done();
+                        return;
+                    }
                     window.AMap.plugin(['AMap.Geocoder', 'AMap.PlaceSearch'], () => {
                         try {
-                            // 初始化地理编码器（用于备用）
                             geocoderRef.current = new window.AMap.Geocoder({
                                 city: '全国',
                                 timeout: 5000
                             });
-                            
-                            // 插件加载完成后处理数据（只处理一次）
-                            if (!processingRef.current) {
-                                setTimeout(() => {
-                                    processAlarms();
-                                }, 500);
-                            }
+                            done();
                         } catch (error) {
                             console.error('创建地理编码器失败:', error);
                             setMapError('创建地理编码器失败');
                             setIsLoading(false);
                         }
                     });
+                    setTimeout(done, 600);
                 };
                 
-                // 监听地图加载完成事件
                 map.on('complete', onMapReady);
                 
-                // 如果地图已经加载完成，直接执行
                 setTimeout(() => {
                     try {
                         const size = map.getSize();
@@ -395,7 +436,6 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
                             onMapReady();
                         }
                     } catch (e) {
-                        // 如果检查失败，等待 complete 事件
                         console.log('等待地图 complete 事件');
                     }
                 }, 100);
@@ -408,6 +448,7 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
 
         // 检查是否已经加载了高德地图
         if (window.AMap) {
+            setAmapScriptLoaded(true);
             setTimeout(() => {
                 initMap();
             }, 100);
@@ -416,6 +457,7 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
                 const checkAMap = setInterval(() => {
                     if (window.AMap) {
                         clearInterval(checkAMap);
+                        setAmapScriptLoaded(true);
                         setTimeout(() => {
                             initMap();
                         }, 100);
@@ -445,6 +487,7 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
 
                 (window as any).initPathReplayMap = () => {
                     console.log('高德地图脚本加载完成');
+                    setAmapScriptLoaded(true);
                     setTimeout(() => {
                         initMap();
                     }, 100);
@@ -856,27 +899,22 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
         }
     }, [pathPoints]);
 
-    // 当路径点更新时重新绘制
+    // 路径点或地图就绪时绘制（pathPoints 可能先于 map 就绪，故依赖 mapReady 以便地图晚到时补绘）
     useEffect(() => {
-        if (pathPoints.length > 0 && mapInstanceRef.current && window.AMap && geocoderRef.current) {
-            // 验证路径点是否有效
-            const hasValidPoints = pathPoints.some(p => 
-                !isNaN(p.lng) && !isNaN(p.lat) &&
-                p.lng >= -180 && p.lng <= 180 &&
-                p.lat >= -90 && p.lat <= 90
-            );
-            if (hasValidPoints) {
-                drawPath();
-            }
-        }
-    }, [pathPoints, drawPath]);
+        if (pathPoints.length === 0 || !mapInstanceRef.current || !window.AMap) return;
+        const hasValidPoints = pathPoints.some(p =>
+            !isNaN(p.lng) && !isNaN(p.lat) &&
+            p.lng >= -180 && p.lng <= 180 &&
+            p.lat >= -90 && p.lat <= 90
+        );
+        if (hasValidPoints) drawPath();
+    }, [pathPoints, mapReady, drawPath]);
 
-    // 播放路径动画
+    // 播放路径动画：优先 panTo(center, duration) 平滑移动，不依赖回调，用 setTimeout 推进
     const playPath = useCallback(() => {
         if (pathPoints.length === 0 || !mapInstanceRef.current) return;
 
-        // 过滤出有效的路径点
-        const validPoints = pathPoints.filter(p => 
+        const validPoints = pathPoints.filter(p =>
             !isNaN(p.lng) && !isNaN(p.lat) &&
             p.lng >= -180 && p.lng <= 180 &&
             p.lat >= -90 && p.lat <= 90
@@ -887,6 +925,10 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
             return;
         }
 
+        const map = mapInstanceRef.current;
+        const panDuration = 600;
+        const stayMs = 1200;
+
         setIsPlaying(true);
         let index = 0;
 
@@ -894,114 +936,180 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
             if (index >= validPoints.length) {
                 setIsPlaying(false);
                 setCurrentIndex(0);
+                playTimeoutRef.current = null;
                 return;
             }
 
             const point = validPoints[index];
-            mapInstanceRef.current.setCenter([point.lng, point.lat]);
-            mapInstanceRef.current.setZoom(15);
-
             setCurrentIndex(index);
-            index++;
 
-            setTimeout(playNext, 2000); // 每2秒移动到下一个点
+            const goToNextPoint = () => {
+                playTimeoutRef.current = setTimeout(() => {
+                    index++;
+                    playNext();
+                }, stayMs);
+            };
+
+            try {
+                if (typeof map.panTo === 'function') {
+                    map.panTo([point.lng, point.lat], panDuration);
+                    playTimeoutRef.current = setTimeout(goToNextPoint, panDuration);
+                } else {
+                    map.setCenter([point.lng, point.lat]);
+                    goToNextPoint();
+                }
+            } catch (_) {
+                map.setCenter([point.lng, point.lat]);
+                goToNextPoint();
+            }
         };
 
+        map.setZoom(15);
         playNext();
     }, [pathPoints]);
 
+    useEffect(() => {
+        return () => {
+            if (playTimeoutRef.current) clearTimeout(playTimeoutRef.current);
+        };
+    }, []);
+
     const pausePath = useCallback(() => {
+        if (playTimeoutRef.current) {
+            clearTimeout(playTimeoutRef.current);
+            playTimeoutRef.current = null;
+        }
         setIsPlaying(false);
     }, []);
 
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl max-h-[92dvh] sm:max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-2 sm:p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl my-4 flex flex-col max-h-[calc(100vh-2rem)] sm:max-h-[90vh]">
                 {/* Header */}
-                <div className="p-4 sm:p-6 border-b border-gray-200 flex items-center justify-between shrink-0 gap-3">
-                    <div>
-                        <h2 className="text-xl sm:text-2xl font-bold text-gray-800 font-mono break-all">
-                            {plateNumber} - 路径重现
+                <div className="p-4 sm:p-5 border-b border-gray-100 flex items-center justify-between shrink-0 gap-3 bg-gradient-to-r from-slate-50 to-white rounded-t-2xl">
+                    <div className="min-w-0">
+                        <h2 className="text-lg sm:text-xl font-bold text-gray-800 font-mono truncate">
+                            {plateNumber}
                         </h2>
-                        <p className="text-sm text-gray-500 mt-1">
-                            共 {pathPoints.length} 个路径点（已去重）
+                        <p className="text-xs sm:text-sm text-gray-500 mt-0.5">
+                            路径重现 · 共 {pathPoints.length} 个途经点
                         </p>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                        className="p-2 hover:bg-gray-100 rounded-xl transition-colors shrink-0"
+                        aria-label="关闭"
                     >
                         <X size={20} className="text-gray-500" />
                     </button>
                 </div>
 
-                {/* Controls */}
-                <div className="p-3 sm:p-4 border-b border-gray-200 flex items-center gap-3 flex-wrap shrink-0">
-                    <button
-                        onClick={isPlaying ? pausePath : playPath}
-                        disabled={pathPoints.length === 0}
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {isPlaying ? <Pause size={18} /> : <Play size={18} />}
-                        {isPlaying ? '暂停' : '播放'}
-                    </button>
-                    {isPlaying && (
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <Clock size={16} />
-                            <span>当前: {currentIndex + 1} / {pathPoints.length}</span>
-                        </div>
-                    )}
-                </div>
-
-                {/* Map Container */}
-                <div className="flex-1 relative min-h-[280px] sm:min-h-[400px]">
-                    {isLoading && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
-                            <div className="text-center">
-                                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-                                <p className="text-gray-600">正在加载地图和路径...</p>
+                {/* 可滚动主体：地图固定高度不抢空间，下方描述自然紧跟，整体可上下滑动；触摸地图时由高德处理拖拽/缩放 */}
+                <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+                    {/* 播放控制 */}
+                    <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-3 flex-wrap shrink-0 bg-white">
+                        <button
+                            onClick={isPlaying ? pausePath : playPath}
+                            disabled={pathPoints.length === 0}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm shadow-sm"
+                        >
+                            {isPlaying ? <Pause size={18} /> : <Play size={18} />}
+                            {isPlaying ? '暂停' : '播放轨迹'}
+                        </button>
+                        {isPlaying && (
+                            <div className="flex items-center gap-2 text-sm text-gray-500">
+                                <Clock size={16} />
+                                <span>当前 {currentIndex + 1} / {pathPoints.length}</span>
                             </div>
-                        </div>
-                    )}
-                    {mapError && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10">
-                            <div className="text-center text-red-600">
-                                <MapPin size={48} className="mx-auto mb-4 opacity-50" />
-                                <p>{mapError}</p>
-                            </div>
-                        </div>
-                    )}
-                    <div ref={mapContainerRef} className="w-full h-full" style={{ minHeight: '280px' }} />
-                </div>
-
-                {/* Path Info */}
-                {pathPoints.length > 0 && (
-                    <div className="p-3 sm:p-4 border-t border-gray-200 shrink-0 max-h-40 overflow-y-auto">
-                        <div className="flex items-center gap-2 mb-2">
-                            <MapPin size={16} className="text-gray-500" />
-                            <span className="text-sm font-semibold text-gray-700">路径信息</span>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-600">
-                            <div>
-                                <span className="text-gray-500">起点:</span> {pathPoints[0].address}
-                            </div>
-                            {pathPoints.length > 1 && (
-                                <div>
-                                    <span className="text-gray-500">终点:</span> {pathPoints[pathPoints.length - 1].address}
-                                </div>
-                            )}
-                            <div>
-                                <span className="text-gray-500">总点数:</span> {pathPoints.length}
-                            </div>
-                            <div>
-                                <span className="text-gray-500">时间跨度:</span>{' '}
-                                {new Date(pathPoints[0].timestamp).toLocaleDateString('zh-CN')} -{' '}
-                                {new Date(pathPoints[pathPoints.length - 1].timestamp).toLocaleDateString('zh-CN')}
-                            </div>
-                        </div>
+                        )}
                     </div>
-                )}
+
+                    {/* 地图：固定高度，避免与描述之间出现空白；触摸由高德接管 */}
+                    <div className="relative w-full shrink-0 h-[38vh] sm:h-[42vh] min-h-[260px] max-h-[420px] rounded-b-none">
+                        {isLoading && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-gray-50/95 z-10 rounded-xl">
+                                <div className="text-center">
+                                    <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-500 border-t-transparent mx-auto mb-3" />
+                                    <p className="text-sm text-gray-600">正在加载地图和路径...</p>
+                                </div>
+                            </div>
+                        )}
+                        {mapError && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-gray-50 z-10 rounded-xl">
+                                <div className="text-center text-red-600 px-4">
+                                    <MapPin size={40} className="mx-auto mb-3 opacity-60" />
+                                    <p className="text-sm">{mapError}</p>
+                                </div>
+                            </div>
+                        )}
+                        <div
+                            ref={mapContainerRef}
+                            className="w-full h-full rounded-xl overflow-hidden touch-none"
+                            style={{ minHeight: 260 }}
+                            title="可拖动、双指缩放地图"
+                        />
+                    </div>
+
+                    {/* 路径信息 + 途经点描述：紧跟地图，无空白；此区域可独立滚动或随整页滑动 */}
+                    {pathPoints.length > 0 && (
+                        <div className="p-4 sm:p-5 pt-3 flex flex-col gap-4 shrink-0">
+                            <section className="rounded-xl border border-gray-100 bg-gray-50/60 p-3 sm:p-4">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <MapPin size={16} className="text-blue-500 shrink-0" />
+                                    <span className="text-sm font-semibold text-gray-800">路径概览</span>
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2 text-xs">
+                                    <div>
+                                        <span className="text-gray-400 block">起点</span>
+                                        <span className="text-gray-700 truncate block" title={pathPoints[0].address}>{pathPoints[0].address}</span>
+                                    </div>
+                                    {pathPoints.length > 1 && (
+                                        <div>
+                                            <span className="text-gray-400 block">终点</span>
+                                            <span className="text-gray-700 truncate block" title={pathPoints[pathPoints.length - 1].address}>{pathPoints[pathPoints.length - 1].address}</span>
+                                        </div>
+                                    )}
+                                    <div>
+                                        <span className="text-gray-400 block">途经点</span>
+                                        <span className="text-gray-700">{pathPoints.length} 个</span>
+                                    </div>
+                                    <div>
+                                        <span className="text-gray-400 block">时间跨度</span>
+                                        <span className="text-gray-700">
+                                            {new Date(pathPoints[0].timestamp).toLocaleDateString('zh-CN')} 至 {new Date(pathPoints[pathPoints.length - 1].timestamp).toLocaleDateString('zh-CN')}
+                                        </span>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <section>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Clock size={16} className="text-blue-500 shrink-0" />
+                                    <span className="text-sm font-semibold text-gray-800">途经点描述</span>
+                                </div>
+                                <ul className="space-y-0 border border-gray-100 rounded-xl overflow-hidden bg-white divide-y divide-gray-50 max-h-[40vh] overflow-y-auto overscroll-contain">
+                                    {pathPoints.map((point, index) => (
+                                        <li
+                                            key={`${point.timestamp}-${point.lng}-${point.lat}-${index}`}
+                                            className="flex items-start gap-3 px-3 py-2.5 sm:px-4 sm:py-3 text-sm hover:bg-gray-50/80 transition-colors"
+                                        >
+                                            <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-white text-xs font-bold shrink-0">
+                                                {index + 1}
+                                            </span>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-gray-500 text-xs mt-0.5">
+                                                    {new Date(point.timestamp).toLocaleString('zh-CN', { dateStyle: 'short', timeStyle: 'short' })}
+                                                </p>
+                                                <p className="text-gray-800 break-words mt-0.5">{point.address || '未知地点'}</p>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </section>
+                        </div>
+                    )}
+                </div>
             </div>
         </div>
     );
