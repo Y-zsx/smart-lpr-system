@@ -95,9 +95,13 @@ export const streamCameraLive = async (req: AuthenticatedRequest, res: Response,
     res.on('close', cleanup);
     res.on('error', cleanup);
 
-    ffmpeg.stdout.on('data', () => {
-      firstChunkReceived = true;
-    });
+    const sendStreamError = (message: string, code: 502 | 500 = 502) => {
+      if (closed || res.headersSent) return;
+      closed = true;
+      clearTimeout(startupTimer);
+      if (!ffmpeg.killed) ffmpeg.kill('SIGKILL');
+      next(new AppError(message, code, 'STREAM_OPEN_FAILED'));
+    };
 
     ffmpeg.stderr.on('data', (chunk: Buffer) => {
       const text = chunk.toString('utf8');
@@ -113,15 +117,17 @@ export const streamCameraLive = async (req: AuthenticatedRequest, res: Response,
 
     ffmpeg.on('close', (code) => {
       clearTimeout(startupTimer);
-      if (closed) {
-        return;
-      }
+      if (closed) return;
       if (!firstChunkReceived && !res.headersSent) {
-        next(new AppError(
-          `Unable to open stream. Please verify camera URL/credentials and ffmpeg installation. ${stderrBuffer || ''}`.trim(),
-          502,
-          'STREAM_OPEN_FAILED'
-        ));
+        const isPrivateOrLocal = /^(https?:\/\/)(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.)/i.test(camera.url || '') ||
+          /^rtsps?:\/\/(10\.|172\.|192\.168\.|127\.)/i.test(camera.url || '');
+        const hint = isPrivateOrLocal
+          ? ' 摄像头为局域网地址时，服务器无法访问，请在监控页使用「直连」或与摄像头同网段的设备访问。'
+          : '';
+        sendStreamError(
+          `无法打开流（${stderrBuffer || '未收到数据'}）。请检查流地址与鉴权。${hint}`.trim(),
+          502
+        );
         return;
       }
       if (!res.writableEnded) {
@@ -129,13 +135,19 @@ export const streamCameraLive = async (req: AuthenticatedRequest, res: Response,
       }
     });
 
-    res.setHeader('Content-Type', 'multipart/x-mixed-replace; boundary=ffmpeg');
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.setHeader('X-Accel-Buffering', 'no');
-
-    ffmpeg.stdout.pipe(res);
+    // 先等收到第一帧再写响应头并 pipe，避免连接失败时已发出 200+multipart 导致无法返回 502
+    ffmpeg.stdout.once('data', (firstChunk: Buffer) => {
+      if (closed || res.headersSent) return;
+      firstChunkReceived = true;
+      res.setHeader('Content-Type', 'multipart/x-mixed-replace; boundary=ffmpeg');
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.status(200);
+      res.write(firstChunk);
+      ffmpeg.stdout.pipe(res);
+    });
   } catch (error) {
     console.error('Error proxying camera live stream:', error);
     next(new AppError('Error proxying camera stream', 500, 'CAMERA_STREAM_PROXY_FAILED'));

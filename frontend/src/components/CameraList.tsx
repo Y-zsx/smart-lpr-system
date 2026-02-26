@@ -463,11 +463,11 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                                     <label className="text-xs text-gray-500 block mb-1">流地址 (URL)</label>
                                     <input
                                         className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500"
-                                        placeholder="http://... 或 rtsp://..."
+                                        placeholder="http://... 或 rtsp://...（手机 IP 摄像头如 http://手机IP:8080）"
                                         value={newCam.url || ''}
                                         onChange={e => setNewCam({ ...newCam, url: e.target.value })}
                                     />
-                                    <p className="text-xs text-gray-400 mt-1">支持 MJPEG、HLS 等格式</p>
+                                    <p className="text-xs text-gray-400 mt-1">支持 MJPEG、HLS、RTSP。手机当摄像头：与手机同 WiFi 下填 App 显示的地址（如 http://10.x.x.x:8080）</p>
                                     <button
                                         type="button"
                                         onClick={() => setStreamHelperExpanded(!streamHelperExpanded)}
@@ -724,7 +724,7 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                                     <label className="text-xs text-gray-500 block mb-1">流地址 (URL)</label>
                                     <input
                                         className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500"
-                                        placeholder="http://... 或 rtsp://..."
+                                        placeholder="http://... 或 rtsp://...（手机 IP 摄像头如 http://手机IP:8080）"
                                         value={editCam.url || ''}
                                         onChange={e => setEditCam({ ...editCam, url: e.target.value })}
                                     />
