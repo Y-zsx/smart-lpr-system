@@ -541,22 +541,23 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         };
     }, [effectiveCameraId, currentCamera?.id]);
 
-    // 摄像头切换时，如果是视频文件，立即加载预览
+    // 摄像头切换时：先中断并清空当前画面，再加载新摄像头，避免窗口叠加
     useEffect(() => {
-        console.log('摄像头切换 effect:', {
-            isFile,
-            cameraId: currentCamera?.id,
-            cameraName: currentCamera?.name,
-            hasUrl: !!currentCamera?.url,
-            url: currentCamera?.url?.substring(0, 50)
-        });
-
-        // 停止之前的摄像头
-        if (!isFile) {
-            stopCamera();
-        } else if (fileVideoRef.current) {
-            // 视频文件模式：暂停播放
+        // 无条件清空所有可能正在显示的源，再根据新摄像头类型加载
+        if (remoteVideoRef.current) {
+            remoteVideoRef.current.removeAttribute('src');
+        }
+        if (fileVideoRef.current) {
             fileVideoRef.current.pause();
+            fileVideoRef.current.removeAttribute('src');
+            fileVideoRef.current.load();
+        }
+        if (streamRef.current) {
+            streamRef.current.getTracks().forEach(t => t.stop());
+            streamRef.current = null;
+        }
+        if (videoRef.current) {
+            videoRef.current.srcObject = null;
         }
 
         // 如果是视频文件，直接设置 src 并加载
@@ -833,10 +834,11 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                             className="w-full h-full object-cover"
                         />
                     ) : (
-                        <div className="w-full h-full relative">
+                        <div className="w-full h-full relative" key={`stream-wrap-${effectiveCameraId}`}>
                             {streamPreviewUrl ? (
                                 <img
                                     ref={remoteVideoRef}
+                                    key={`stream-${effectiveCameraId}`}
                                     src={streamPreviewUrl}
                                     alt="Remote Stream"
                                     className="w-full h-full object-cover"
