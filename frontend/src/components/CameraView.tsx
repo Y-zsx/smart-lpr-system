@@ -47,7 +47,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     // 多窗口模式：每个窗口有独立的扫描状态
     const [localScanning, setLocalScanning] = useState(false);
     const { isScanning: globalScanning, setScanning: setGlobalScanning, addPlate, settings } = usePlateStore();
-    const { cameras, selectedCameraId, updateCameraStatus, localBlobUrls } = useCameraStore();
+    const { cameras, selectedCameraId, updateCameraStatus, localBlobUrls, setLocalBlobUrl } = useCameraStore();
 
     // 如果提供了 propCameraId，使用它；否则使用选中的摄像头
     const effectiveCameraId = propCameraId || selectedCameraId;
@@ -61,10 +61,15 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     const streamPreviewUrl = isStream
         ? (useDirectStreamPreview ? directStreamUrl : (proxyStreamUrl || directStreamUrl))
         : '';
-    // 本会话内优先用本地 blob 播放，避免从服务器拉流导致卡顿；无 blob 时回退到线上 URL
+    // 远程路径（cos/uploads）：仅用 blob 播放，避免 /api/media/redirect 长连接阻塞 AI 等请求；无 blob 时先拉取再播
+    const isRemoteFileUrl = !!(currentCamera?.url && (currentCamera.url.startsWith('cos://') || currentCamera.url.startsWith('uploads/')));
     const fileVideoUrl = isFile
-        ? (effectiveCameraId && localBlobUrls[effectiveCameraId]) || apiClient.getMediaUrl(currentCamera?.url) || ''
+        ? (effectiveCameraId && localBlobUrls[effectiveCameraId]) || (!isRemoteFileUrl ? (apiClient.getMediaUrl(currentCamera?.url) || '') : '')
         : '';
+    /** 远程文件正在拉取为 blob 时为 true，用于显示加载态 */
+    const [fileVideoBlobLoading, setFileVideoBlobLoading] = useState(false);
+    const [fileVideoBlobError, setFileVideoBlobError] = useState<string | null>(null);
+    const [fileVideoBlobRetry, setFileVideoBlobRetry] = useState(0);
 
     // 使用独立扫描状态或全局扫描状态
     const isScanning = independentScanning ? localScanning : globalScanning;
@@ -121,6 +126,47 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         // 摄像头切换时恢复为代理优先，失败后再自动降级直连
         setUseDirectStreamPreview(false);
     }, [currentCamera?.id, currentCamera?.url]);
+
+    // 远程文件型摄像头：用低优先级 fetch 拉成 blob 再播，避免 redirect 长连接占满同源导致 AI 请求被阻塞
+    useEffect(() => {
+        if (!isFile || !effectiveCameraId || !currentCamera?.url || !isRemoteFileUrl || localBlobUrls[effectiveCameraId]) {
+            return;
+        }
+        const url = apiClient.getMediaUrl(currentCamera.url);
+        if (!url || url.startsWith('blob:') || url.startsWith('data:')) return;
+
+        const ac = new AbortController();
+        setFileVideoBlobError(null);
+        setFileVideoBlobLoading(true);
+
+        (async () => {
+            try {
+                const init: RequestInit = {
+                    credentials: 'include',
+                    signal: ac.signal
+                };
+                (init as RequestInit & { priority?: string }).priority = 'low';
+                const res = await fetch(url, init);
+                if (!res.ok || ac.signal.aborted) return;
+                const blob = await res.blob();
+                if (ac.signal.aborted) return;
+                const blobUrl = URL.createObjectURL(blob);
+                setLocalBlobUrl(effectiveCameraId, blobUrl);
+            } catch (e) {
+                if ((e as Error)?.name === 'AbortError') return;
+                setFileVideoBlobError('视频加载失败，请重试');
+            } finally {
+                if (!ac.signal.aborted) {
+                    setFileVideoBlobLoading(false);
+                }
+            }
+        })();
+
+        return () => {
+            ac.abort();
+            setFileVideoBlobLoading(false);
+        };
+    }, [isFile, effectiveCameraId, currentCamera?.url, isRemoteFileUrl, localBlobUrls[effectiveCameraId], setLocalBlobUrl, fileVideoBlobRetry]);
 
     const startCamera = async () => {
         if (isFile) {
@@ -748,6 +794,28 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                                 console.log('视频数据加载完成');
                             }}
                         />
+                    ) : isRemoteFileUrl && (fileVideoBlobLoading || fileVideoBlobError) ? (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                            {fileVideoBlobLoading ? (
+                                <>
+                                    <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-500 border-t-transparent mb-4" />
+                                    <p className="text-sm">正在加载视频…</p>
+                                    <p className="text-xs text-gray-400 mt-1">不影响识别等请求</p>
+                                </>
+                            ) : (
+                                <>
+                                    <AlertTriangle size={48} className="mb-4 text-yellow-500" />
+                                    <p>{fileVideoBlobError || '视频加载失败'}</p>
+                                    <button
+                                        type="button"
+                                        className="mt-3 px-4 py-2 rounded-lg bg-blue-500 text-white text-sm hover:bg-blue-600"
+                                        onClick={() => { setFileVideoBlobError(null); setFileVideoBlobLoading(true); setFileVideoBlobRetry(r => r + 1); }}
+                                    >
+                                        重试
+                                    </button>
+                                </>
+                            )}
+                        </div>
                     ) : (
                         <div className="flex flex-col items-center justify-center h-full text-gray-500">
                             <AlertTriangle size={48} className="mb-4 text-yellow-500" />
