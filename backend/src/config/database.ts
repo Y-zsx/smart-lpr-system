@@ -12,10 +12,11 @@ const dbConfig = {
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'smart_lpr',
   waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
+  connectionLimit: Math.max(2, Number(process.env.DB_CONNECTION_LIMIT || 10)),
+  queueLimit: Math.max(0, Number(process.env.DB_QUEUE_LIMIT || 0)),
+  connectTimeout: Math.max(1000, Number(process.env.DB_CONNECT_TIMEOUT_MS || 10000)),
   enableKeepAlive: true,
-  keepAliveInitialDelay: 0
+  keepAliveInitialDelay: Math.max(0, Number(process.env.DB_KEEPALIVE_INITIAL_DELAY_MS || 0))
 };
 
 // 创建连接池
@@ -110,6 +111,30 @@ export const initDatabase = async (): Promise<void> => {
         INDEX \`idx_region_code\` (\`region_code\`),
         FOREIGN KEY (\`plate_id\`) REFERENCES \`plates\`(\`id\`) ON DELETE SET NULL,
         FOREIGN KEY (\`blacklist_id\`) REFERENCES \`blacklist\`(\`id\`) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+
+    // 创建 alarm_media 表（告警视频/截图持久化）
+    await connection.execute(`
+      CREATE TABLE IF NOT EXISTS \`alarm_media\` (
+        \`id\` BIGINT AUTO_INCREMENT PRIMARY KEY,
+        \`alarm_id\` INT,
+        \`record_id\` VARCHAR(36),
+        \`plate_number\` VARCHAR(20),
+        \`camera_id\` VARCHAR(255),
+        \`media_type\` ENUM('video', 'image') NOT NULL DEFAULT 'video',
+        \`media_path\` VARCHAR(500),
+        \`duration_sec\` INT,
+        \`size_bytes\` BIGINT,
+        \`status\` ENUM('pending', 'processing', 'ready', 'failed') NOT NULL DEFAULT 'pending',
+        \`error_message\` VARCHAR(500),
+        \`created_at\` BIGINT NOT NULL,
+        \`updated_at\` BIGINT NOT NULL,
+        INDEX \`idx_alarm_media_alarm_id\` (\`alarm_id\`),
+        INDEX \`idx_alarm_media_record_id\` (\`record_id\`),
+        INDEX \`idx_alarm_media_camera_id\` (\`camera_id\`),
+        INDEX \`idx_alarm_media_status\` (\`status\`),
+        INDEX \`idx_alarm_media_created_at\` (\`created_at\`)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Alarm, useAlarmStore } from '../store/alarmStore';
-import { Clock, MapPin, X, Image as ImageIcon, Route, CheckCircle, Archive, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Clock, MapPin, X, Image as ImageIcon, Route, CheckCircle, Archive, ZoomIn, ZoomOut, RotateCcw, Download } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { AlarmPathReplay } from './AlarmPathReplay';
 import { useConfirmContext } from '../contexts/ConfirmContext';
@@ -23,6 +23,7 @@ interface AlarmRect {
 
 interface AlarmImageState {
     imageUrl: string;
+    sourcePath: string;
     rect?: AlarmRect;
     plateNumber: string;
     plateType: PlateType;
@@ -382,6 +383,7 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                                                     const rect = extractAlarmRect(alarm);
                                                     const nextImage = {
                                                         imageUrl,
+                                                        sourcePath: alarm.image_path,
                                                         rect,
                                                         plateNumber: alarm.plate_number,
                                                         plateType: extractAlarmPlateType(alarm),
@@ -463,6 +465,24 @@ export const AlarmDetail: React.FC<AlarmDetailProps> = ({ plateNumber, alarms, o
                                     title="复位"
                                 >
                                     <RotateCcw size={18} className="text-gray-800" />
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        try {
+                                            await apiClient.downloadMedia(
+                                                selectedImage.sourcePath,
+                                                `${selectedImage.plateNumber}-alarm-${Date.now()}.jpg`
+                                            );
+                                            toast.success('下载成功');
+                                        } catch (error) {
+                                            console.error('下载告警图片失败:', error);
+                                            toast.error('下载失败，请重试');
+                                        }
+                                    }}
+                                    className="p-2 bg-white/95 hover:bg-white rounded-lg transition-colors"
+                                    title="下载图片"
+                                >
+                                    <Download size={18} className="text-gray-800" />
                                 </button>
                                 <span className="text-xs text-white px-2">{Math.round(imageScale * 100)}%</span>
                             </div>

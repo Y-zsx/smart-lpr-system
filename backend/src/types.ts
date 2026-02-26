@@ -78,6 +78,22 @@ export interface Alarm {
     severity: 'high' | 'medium' | 'low';
 }
 
+export interface AlarmMedia {
+    id: number;
+    alarmId?: number;
+    recordId?: string;
+    plateNumber?: string;
+    cameraId?: string;
+    mediaType: 'video' | 'image';
+    mediaPath?: string;
+    durationSec?: number;
+    sizeBytes?: number;
+    status: 'pending' | 'processing' | 'ready' | 'failed';
+    errorMessage?: string;
+    createdAt: number;
+    updatedAt: number;
+}
+
 export interface DailyStat {
     date: string;
     count: number;

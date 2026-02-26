@@ -18,7 +18,8 @@ export function registerAuthFailureHandler(handler: (() => void) | null) {
 
 function normalizeBaseUrl(url?: string): string {
     if (!url) return '';
-    return url.trim().replace(/\/+$/, '');
+    // 兼容把后端地址配置成 https://host/api 的场景，避免拼接出 /api/api/*
+    return url.trim().replace(/\/+$/, '').replace(/\/api$/i, '');
 }
 
 function getApiBaseOverride(): string {
@@ -106,6 +107,22 @@ export interface AuthSnapshot {
 
 export type StreamVendor = 'hikvision' | 'dahua' | 'uniview' | 'axis' | 'custom';
 export type StreamProtocol = 'rtsp' | 'http';
+export type AlarmMediaStatus = 'pending' | 'processing' | 'ready' | 'failed';
+export interface AlarmMedia {
+    id: number;
+    alarmId?: number;
+    recordId?: string;
+    plateNumber?: string;
+    cameraId?: string;
+    mediaType: 'video' | 'image';
+    mediaPath?: string;
+    durationSec?: number;
+    sizeBytes?: number;
+    status: AlarmMediaStatus;
+    errorMessage?: string;
+    createdAt: number;
+    updatedAt: number;
+}
 export interface OnvifDiscoveredDevice {
     endpoint: string;
     xaddrs: string[];
@@ -377,6 +394,55 @@ export const apiClient = {
         return request('/api/alarms', options);
     },
 
+    async getAlarmMedia(params?: {
+        alarmId?: number;
+        recordId?: string;
+        cameraId?: string;
+        status?: AlarmMediaStatus;
+    }) {
+        const query = new URLSearchParams();
+        if (typeof params?.alarmId === 'number') query.set('alarmId', String(params.alarmId));
+        if (params?.recordId) query.set('recordId', params.recordId);
+        if (params?.cameraId) query.set('cameraId', params.cameraId);
+        if (params?.status) query.set('status', params.status);
+        const suffix = query.toString() ? `?${query.toString()}` : '';
+        return request<AlarmMedia[]>(`/api/alarm-media${suffix}`);
+    },
+
+    async getAlarmMediaById(id: number) {
+        return request<AlarmMedia>(`/api/alarm-media/${id}`);
+    },
+
+    async createAlarmMediaCapture(payload: {
+        alarmId?: number;
+        recordId?: string;
+        plateNumber?: string;
+        cameraId?: string;
+        durationSec?: number;
+    }) {
+        return request<{ queued: boolean; reused?: boolean; item: AlarmMedia }>(`/api/alarm-media/capture`, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
+
+    async updateAlarmMedia(id: number, payload: {
+        status?: AlarmMediaStatus;
+        durationSec?: number;
+        errorMessage?: string;
+    }) {
+        return request<AlarmMedia>(`/api/alarm-media/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload)
+        });
+    },
+
+    async deleteAlarmMedia(id: number) {
+        return request<{ deleted: boolean }>(`/api/alarm-media/${id}`, {
+            method: 'DELETE'
+        });
+    },
+
     async markAlarmAsRead(id: number) {
         return request(`/api/alarms/${id}/read`, {
             method: 'PUT'
@@ -501,13 +567,31 @@ export const apiClient = {
         if (!path) return 'https://via.placeholder.com/400x300?text=No+Image';
         if (path.startsWith('http://') || path.startsWith('https://')) return path;
         const base = normalizeBaseUrl(activeBackendUrl || resolveInitialBackendUrl());
-        if (path.startsWith('uploads/')) {
-            return `${base}/${path}`;
+        const token = getStoredToken();
+        const tokenQuery = token ? `&token=${encodeURIComponent(token)}` : '';
+        if (path.startsWith('cos://') || path.startsWith('uploads/')) {
+            return `${base}/api/media/redirect?path=${encodeURIComponent(path)}${tokenQuery}`;
         }
         if (path.startsWith('data:') || path.startsWith('blob:')) {
             return path;
         }
         return `${base}/${path}`;
+    },
+
+    async downloadMedia(path: string, filename?: string): Promise<void> {
+        const query = new URLSearchParams({ path });
+        if (filename) query.set('filename', filename);
+        const blob = await request<Blob>(`/api/media/download?${query.toString()}`, {
+            method: 'GET'
+        });
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = filename || `media-${Date.now()}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(objectUrl);
     },
 
     async getIamUsers() {

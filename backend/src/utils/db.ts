@@ -1,6 +1,7 @@
 import { pool } from '../config/database';
 import { LicensePlate, BlacklistItem, Alarm, Rect, PlateRecord, PlateGroup } from '../types';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
+import { enqueueAlarmClipCapture } from '../services/alarmMediaService';
 
 // 数据库接口
 export interface Database {
@@ -578,8 +579,9 @@ export const savePlateRecord = async (record: PlateRecord): Promise<PlateRecord>
         // 注意：plate_id 设置为 NULL，因为记录保存在 plate_records 表中，不在 plates 表中
         // 外键约束允许 NULL 值，且告警主要关联的是 blacklist_id 和 plate_number
         // 尝试添加经纬度字段（如果表结构已更新）
+        let createdAlarmId: number | null = null;
         try {
-          await connection.execute(
+          const [insertResult] = await connection.execute<ResultSetHeader>(
             `INSERT INTO \`alarms\` (
               \`plate_id\`, \`record_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
               \`plate_number\`, \`camera_id\`, \`region_code\`, \`image_path\`, \`location\`, \`latitude\`, \`longitude\`, \`reason\`, \`severity\`
@@ -601,11 +603,12 @@ export const savePlateRecord = async (record: PlateRecord): Promise<PlateRecord>
               blacklistItem.severity
             ]
           );
+          createdAlarmId = insertResult.insertId;
         } catch (error: any) {
           // 如果字段不存在，使用旧格式（向后兼容）
           if (error.code === 'ER_BAD_FIELD_ERROR') {
             console.warn('告警表未包含新字段，使用旧格式保存');
-            await connection.execute(
+            const [insertResult] = await connection.execute<ResultSetHeader>(
               `INSERT INTO \`alarms\` (
                 \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
                 \`plate_number\`, \`image_path\`, \`location\`, \`reason\`, \`severity\`
@@ -622,9 +625,20 @@ export const savePlateRecord = async (record: PlateRecord): Promise<PlateRecord>
                 blacklistItem.severity
               ]
             );
+            createdAlarmId = insertResult.insertId;
           } else {
             throw error;
           }
+        }
+        if (createdAlarmId && record.cameraId) {
+          void enqueueAlarmClipCapture({
+            alarmId: createdAlarmId,
+            recordId: record.id,
+            plateNumber: record.plateNumber,
+            cameraId: record.cameraId
+          }).catch((error) => {
+            console.warn('[AlarmMedia] enqueue failed:', error);
+          });
         }
         console.log(`告警创建成功: 车牌 ${record.plateNumber}, 时间 ${new Date(alarmTimestamp).toLocaleString()}`);
       } else {
@@ -685,8 +699,9 @@ export const createAlarmForBlacklist = async (record: PlateRecord, blacklistItem
     // 注意：plate_id 设置为 NULL，因为记录保存在 plate_records 表中，不在 plates 表中
     // 外键约束允许 NULL 值，且告警主要关联的是 blacklist_id 和 plate_number
     // 尝试添加经纬度字段（如果表结构已更新）
+    let createdAlarmId: number | null = null;
     try {
-      await connection.execute(
+      const [insertResult] = await connection.execute<ResultSetHeader>(
         `INSERT INTO \`alarms\` (
           \`plate_id\`, \`record_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
           \`plate_number\`, \`camera_id\`, \`region_code\`, \`image_path\`, \`location\`, \`latitude\`, \`longitude\`, \`reason\`, \`severity\`
@@ -708,10 +723,11 @@ export const createAlarmForBlacklist = async (record: PlateRecord, blacklistItem
           blacklistItem.severity
         ]
       );
+      createdAlarmId = insertResult.insertId;
     } catch (error: any) {
       // 如果字段不存在，使用旧格式（向后兼容）
       if (error.code === 'ER_BAD_FIELD_ERROR') {
-        await connection.execute(
+        const [insertResult] = await connection.execute<ResultSetHeader>(
           `INSERT INTO \`alarms\` (
             \`plate_id\`, \`blacklist_id\`, \`timestamp\`, \`is_read\`,
             \`plate_number\`, \`image_path\`, \`location\`, \`reason\`, \`severity\`
@@ -728,9 +744,20 @@ export const createAlarmForBlacklist = async (record: PlateRecord, blacklistItem
             blacklistItem.severity
           ]
         );
+        createdAlarmId = insertResult.insertId;
       } else {
         throw error;
       }
+    }
+    if (createdAlarmId && record.cameraId) {
+      void enqueueAlarmClipCapture({
+        alarmId: createdAlarmId,
+        recordId: record.id,
+        plateNumber: record.plateNumber,
+        cameraId: record.cameraId
+      }).catch((error) => {
+        console.warn('[AlarmMedia] enqueue failed:', error);
+      });
     }
   } finally {
     connection.release();
@@ -888,6 +915,68 @@ export const getAllPlateRecords = async (filters?: {
       } : undefined,
       createdAt: parseInt(r.created_at)
     }));
+  } finally {
+    connection.release();
+  }
+};
+
+export const getPlateRecordImageUrlById = async (recordId: string): Promise<string | null> => {
+  const connection = await pool.getConnection();
+  try {
+    const [rows] = await connection.execute<RowDataPacket[]>(
+      'SELECT `image_url` FROM `plate_records` WHERE `id` = ? LIMIT 1',
+      [recordId]
+    );
+    if (rows.length === 0) return null;
+    return (rows[0].image_url as string | null) || null;
+  } finally {
+    connection.release();
+  }
+};
+
+export const getPlateRecordImageUrlsByNumber = async (plateNumber: string): Promise<string[]> => {
+  const connection = await pool.getConnection();
+  try {
+    const [rows] = await connection.execute<RowDataPacket[]>(
+      'SELECT DISTINCT `image_url` FROM `plate_records` WHERE `plate_number` = ? AND `image_url` IS NOT NULL AND `image_url` <> \'\'',
+      [plateNumber]
+    );
+    return rows
+      .map((row: RowDataPacket) => String(row.image_url || '').trim())
+      .filter(Boolean);
+  } finally {
+    connection.release();
+  }
+};
+
+export const countMediaPathReferences = async (mediaPath: string): Promise<number> => {
+  const connection = await pool.getConnection();
+  try {
+    const [plateRows] = await connection.execute<RowDataPacket[]>(
+      'SELECT COUNT(*) AS `count` FROM `plate_records` WHERE `image_url` = ?',
+      [mediaPath]
+    );
+    const plateCount = Number(plateRows[0]?.count || 0);
+
+    let alarmCount = 0;
+    try {
+      const [alarmRows] = await connection.execute<RowDataPacket[]>(
+        'SELECT COUNT(*) AS `count` FROM `alarms` WHERE `image_path` = ? AND `is_deleted` = 0',
+        [mediaPath]
+      );
+      alarmCount = Number(alarmRows[0]?.count || 0);
+    } catch (error: any) {
+      if (error.code === 'ER_BAD_FIELD_ERROR') {
+        const [alarmRows] = await connection.execute<RowDataPacket[]>(
+          'SELECT COUNT(*) AS `count` FROM `alarms` WHERE `image_path` = ?',
+          [mediaPath]
+        );
+        alarmCount = Number(alarmRows[0]?.count || 0);
+      } else {
+        throw error;
+      }
+    }
+    return plateCount + alarmCount;
   } finally {
     connection.release();
   }

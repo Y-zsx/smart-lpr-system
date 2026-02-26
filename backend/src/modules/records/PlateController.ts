@@ -1,22 +1,28 @@
 import { NextFunction, Request, Response } from 'express';
-import { savePlateRecord, getPlateGroups, deletePlateRecord, deletePlateRecordsByNumber } from '../../utils/db';
+import {
+    savePlateRecord,
+    getPlateGroups,
+    deletePlateRecord,
+    deletePlateRecordsByNumber,
+    getPlateRecordImageUrlById,
+    getPlateRecordImageUrlsByNumber,
+    countMediaPathReferences
+} from '../../utils/db';
 import { LicensePlate, PlateType, PlateRecord } from '../../types';
 import { v4 as uuidv4 } from 'uuid';
 import axios from 'axios';
 import FormData from 'form-data';
 import fs from 'fs-extra';
-import path from 'path';
 import { AuthenticatedRequest } from '../auth';
 import { filterPlateGroupsByScope } from '../../utils/dataScope';
 import { isValidChinesePlateNumber } from '../../utils/plateValidation';
 import { AppError } from '../../utils/AppError';
+import { deleteStoredFile, persistTempFile } from '../../services/storageService';
 
 const AI_SERVICE_URL = (process.env.AI_SERVICE_URL || 'http://localhost:8001').trim().replace(/\/$/, '');
 const AI_RECOGNIZE_TIMEOUT_MS = Math.max(500, Number(process.env.AI_RECOGNIZE_TIMEOUT_MS || 5000));
 const AI_RECOGNIZE_RETRIES = Math.max(0, Number(process.env.AI_RECOGNIZE_RETRIES || 1));
 const AI_FAILURE_MODE = (process.env.AI_FAILURE_MODE || 'structured').trim().toLowerCase();
-const RECORDS_UPLOAD_DIR = path.join(__dirname, '../../../uploads/records');
-fs.ensureDirSync(RECORDS_UPLOAD_DIR);
 
 const shouldRetryAiError = (error: unknown): boolean => {
     if (!axios.isAxiosError(error)) {
@@ -31,6 +37,19 @@ const shouldRetryAiError = (error: unknown): boolean => {
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const cleanupMediaIfUnused = async (mediaPath?: string | null) => {
+    const normalized = typeof mediaPath === 'string' ? mediaPath.trim() : '';
+    if (!normalized) return;
+    try {
+        const refs = await countMediaPathReferences(normalized);
+        if (refs === 0) {
+            await deleteStoredFile(normalized);
+        }
+    } catch (error) {
+        console.warn('Failed to cleanup media file:', normalized, error);
+    }
+};
 
 export const getPlates = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
@@ -204,10 +223,11 @@ export const recognizePlate = async (req: Request, res: Response, next: NextFunc
             let persistedImageUrl = `uploads/temp/${file.filename}`;
             if (aiPlates.length > 0 && file?.path) {
                 try {
-                    const persistedFilename = `${Date.now()}-${file.filename}`;
-                    const persistedPath = path.join(RECORDS_UPLOAD_DIR, persistedFilename);
-                    await fs.move(file.path, persistedPath, { overwrite: false });
-                    persistedImageUrl = `uploads/records/${persistedFilename}`;
+                    persistedImageUrl = await persistTempFile(file.path, {
+                        originalName: file.originalname,
+                        mimeType: file.mimetype,
+                        category: 'records'
+                    });
                 } catch (persistError) {
                     // 兜底：转存失败时保留 temp 文件，避免记录中的图片地址失效
                     shouldCleanupTempFile = false;
@@ -282,8 +302,10 @@ export const deletePlate = async (req: Request, res: Response, next: NextFunctio
             next(new AppError('缺少记录ID参数', 400, 'VALIDATION_ERROR'));
             return;
         }
+        const mediaPath = await getPlateRecordImageUrlById(id);
         const deleted = await deletePlateRecord(id);
         if (deleted) {
+            await cleanupMediaIfUnused(mediaPath);
             res.json({ message: '删除成功', deleted: true });
         } else {
             res.status(404).json({ message: '记录不存在', deleted: false });
@@ -301,7 +323,11 @@ export const deletePlatesByNumber = async (req: Request, res: Response, next: Ne
             next(new AppError('缺少车牌号参数', 400, 'VALIDATION_ERROR'));
             return;
         }
+        const mediaPaths = await getPlateRecordImageUrlsByNumber(plateNumber);
         const deletedCount = await deletePlateRecordsByNumber(plateNumber);
+        for (const mediaPath of mediaPaths) {
+            await cleanupMediaIfUnused(mediaPath);
+        }
         res.json({ message: '删除成功', deletedCount, plateNumber });
     } catch (error) {
         console.error('Error deleting plates by number:', error);

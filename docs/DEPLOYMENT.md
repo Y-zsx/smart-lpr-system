@@ -328,12 +328,35 @@ DB_PORT=3306
 DB_USER=lpr_user
 DB_PASSWORD=your_strong_password_here
 DB_NAME=smart_lpr
+DB_CONNECTION_LIMIT=10
+DB_QUEUE_LIMIT=0
+DB_CONNECT_TIMEOUT_MS=10000
 
 # AI 服务地址 - ⚠️ 如果 AI 服务在同一服务器，保持 localhost
 AI_SERVICE_URL=http://localhost:8001
 
 # 文件上传配置
 MAX_FILE_SIZE=10485760
+PUBLIC_BASE_URL=https://your-domain.com
+
+# 存储驱动：local / cos
+STORAGE_DRIVER=local
+
+# 腾讯云 COS（STORAGE_DRIVER=cos 时必填）
+COS_BUCKET=
+COS_REGION=
+COS_SECRET_ID=
+COS_SECRET_KEY=
+# 可选：公共读桶/CDN 地址
+COS_PUBLIC_BASE_URL=
+# 私有桶签名 URL 过期秒数
+COS_SIGNED_URL_EXPIRES_SECONDS=600
+
+# 告警触发短视频切片
+ALARM_CLIP_ENABLED=true
+ALARM_CLIP_DURATION_SEC=12
+ALARM_CLIP_TIMEOUT_MS=45000
+ALARM_CLIP_FFMPEG_BIN=ffmpeg
 
 # CORS 配置 - ⚠️ 修改为你的前端域名
 CORS_ORIGIN=https://your-domain.com,http://your-server-ip
@@ -345,6 +368,9 @@ CORS_ORIGIN=https://your-domain.com,http://your-server-ip
 >
 > 💡 **当前版本建议额外配置**（按需）：
 > - `PUBLIC_BASE_URL`: 上传文件访问地址（例如 `https://your-domain.com`）
+> - `STORAGE_DRIVER`: 存储驱动（`local`/`cos`）
+> - `COS_BUCKET` / `COS_REGION` / `COS_SECRET_ID` / `COS_SECRET_KEY`: COS 访问配置
+> - `ALARM_CLIP_*`: 告警视频切片参数（依赖 ffmpeg）
 > - `GLOBAL_RATE_LIMIT_PER_MINUTE`: 全局限流阈值（默认 240）
 > - `AUTH_RATE_LIMIT_PER_MINUTE`: 登录限流阈值（默认 12）
 > - `RECOGNIZE_RATE_LIMIT_PER_MINUTE`: 识别接口限流阈值（默认 60）
@@ -356,6 +382,18 @@ CORS_ORIGIN=https://your-domain.com,http://your-server-ip
 ```bash
 mkdir -p uploads
 chmod 755 uploads
+```
+
+### 4.1 安装 ffmpeg（告警视频切片必需）
+
+> `ALARM_CLIP_ENABLED=true` 时必须安装 ffmpeg，否则告警媒体任务会标记为 failed。
+
+Ubuntu/Debian:
+
+```bash
+sudo apt update
+sudo apt install -y ffmpeg
+ffmpeg -version
 ```
 
 ### 5. 构建项目

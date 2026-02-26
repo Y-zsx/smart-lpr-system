@@ -8,9 +8,11 @@ import * as StatsController from '../modules/stats/controller';
 import * as UploadController from '../modules/monitor/UploadController';
 import * as BlacklistController from '../modules/alarms/BlacklistController';
 import * as AlarmController from '../modules/alarms/AlarmController';
+import * as AlarmMediaController from '../modules/alarms/AlarmMediaController';
 import * as CameraController from '../modules/monitor/CameraController';
 import * as StreamController from '../modules/monitor/StreamController';
 import * as StreamToolsController from '../modules/monitor/StreamToolsController';
+import * as MediaController from '../modules/monitor/MediaController';
 import * as OnvifController from '../modules/monitor/OnvifController';
 import * as AuthController from '../modules/auth/controller';
 import * as IamController from '../modules/iam/controller';
@@ -72,6 +74,8 @@ router.post('/recognize', recognizeLimiter, requireAuth, requirePermission('moni
 // Upload
 router.post('/upload-url', uploadLimiter, requireAuth, requirePermission('plate.manage'), UploadController.getUploadUrl);
 router.put('/upload/put/:filename', uploadLimiter, requireAuth, requirePermission('plate.manage'), UploadController.handleFileUpload);
+router.get('/media/redirect', requireAuth, MediaController.redirectMedia);
+router.get('/media/download', requireAuth, MediaController.downloadMedia);
 
 // Stats
 router.get('/stats/daily', requireAuth, requirePermission('dashboard.view'), applyDataScope(), StatsController.getDailyStats);
@@ -91,6 +95,11 @@ router.get('/alarms', requireAuth, requirePermission('alarms.view'), applyDataSc
 router.put('/alarms/:id/read', requireAuth, requirePermission('alarm.manage'), AlarmController.markAlarmAsRead);
 router.delete('/alarms/:id', requireAuth, requirePermission('alarm.manage'), AlarmController.deleteAlarm);
 router.delete('/alarms/plate/:plateNumber', requireAuth, requirePermission('alarm.manage'), AlarmController.deleteAlarmsByPlate);
+router.get('/alarm-media', requireAuth, requirePermission('alarms.view'), AlarmMediaController.getAlarmMediaList);
+router.get('/alarm-media/:id', requireAuth, requirePermission('alarms.view'), AlarmMediaController.getAlarmMediaDetail);
+router.post('/alarm-media/capture', requireAuth, requirePermission('alarm.manage'), AlarmMediaController.createAlarmMediaCapture);
+router.put('/alarm-media/:id', requireAuth, requirePermission('alarm.manage'), AlarmMediaController.patchAlarmMedia);
+router.delete('/alarm-media/:id', requireAuth, requirePermission('alarm.manage'), AlarmMediaController.removeAlarmMedia);
 
 // Cameras
 router.get('/cameras', requireAuth, requirePermission('monitor.view'), applyDataScope(), CameraController.getCameras);

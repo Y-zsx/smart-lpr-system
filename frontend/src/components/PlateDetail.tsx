@@ -1,6 +1,6 @@
 import React from 'react';
 import { PlateGroup, type PlateType } from '../types/plate';
-import { Clock, MapPin, Camera, X, Image as ImageIcon, Trash2, Loader, AlertTriangle, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Clock, MapPin, Camera, X, Image as ImageIcon, Trash2, Loader, AlertTriangle, ZoomIn, ZoomOut, RotateCcw, Download } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useToastContext } from '../contexts/ToastContext';
 
@@ -94,6 +94,7 @@ const AnnotatedPlateImage: React.FC<AnnotatedPlateImageProps> = ({ imageUrl, rec
 export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDeleted }) => {
     const toast = useToastContext();
     const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
+    const [selectedImagePath, setSelectedImagePath] = React.useState<string | null>(null);
     const [selectedImageRect, setSelectedImageRect] = React.useState<{ x: number; y: number; w: number; h: number } | undefined>(undefined);
     const [selectedImagePlate, setSelectedImagePlate] = React.useState<string>(group.plateNumber);
     const [selectedImagePlateType, setSelectedImagePlateType] = React.useState<PlateType>(group.plateType);
@@ -115,6 +116,7 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
 
     const closeImageModal = React.useCallback(() => {
         setSelectedImage(null);
+        setSelectedImagePath(null);
         setSelectedImageRect(undefined);
         setSelectedImagePlate(group.plateNumber);
         setSelectedImagePlateType(group.plateType);
@@ -271,6 +273,7 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                                                     const imageUrl = apiClient.getImageUrl(record.imageUrl);
                                                     resetImageView();
                                                     setSelectedImage(imageUrl);
+                                                    setSelectedImagePath(record.imageUrl);
                                                     setSelectedImageRect(record.rect);
                                                     setSelectedImagePlate(record.plateNumber);
                                                     setSelectedImagePlateType(record.plateType);
@@ -294,6 +297,7 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                                                     const imageUrl = apiClient.getImageUrl(record.imageUrl);
                                                     resetImageView();
                                                     setSelectedImage(imageUrl);
+                                                    setSelectedImagePath(record.imageUrl);
                                                     setSelectedImageRect(record.rect);
                                                     setSelectedImagePlate(record.plateNumber);
                                                     setSelectedImagePlateType(record.plateType);
@@ -375,6 +379,23 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                                 >
                                     <RotateCcw size={18} className="text-gray-800" />
                                 </button>
+                                {selectedImagePath && (
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                await apiClient.downloadMedia(selectedImagePath, `${selectedImagePlate}-${Date.now()}.jpg`);
+                                                toast.success('下载成功');
+                                            } catch (error) {
+                                                console.error('下载图片失败:', error);
+                                                toast.error('下载失败，请重试');
+                                            }
+                                        }}
+                                        className="p-2 bg-white/95 hover:bg-white rounded-lg transition-colors"
+                                        title="下载图片"
+                                    >
+                                        <Download size={18} className="text-gray-800" />
+                                    </button>
+                                )}
                                 <span className="text-xs text-white px-2">{Math.round(imageScale * 100)}%</span>
                             </div>
 
