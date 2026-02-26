@@ -38,17 +38,17 @@ export const usePlateStore = create<PlateStore>((set, get) => ({
     setPlates: (plates) => set((state) => {
         // 检查数据是否真的变化了
         const isGroupData = Array.isArray(plates) && plates.length > 0 && 'plateNumber' in plates[0] && 'records' in plates[0];
-        
+
         // 如果是分组数据，比较关键字段
         if (isGroupData && arePlateGroupsEqual(state.plates as any[], plates as any[])) {
             return state; // 数据没有变化，不更新状态
         }
-        
+
         // 如果不是分组数据，简单比较长度和引用
         if (!isGroupData && state.plates.length === plates.length && state.plates === plates) {
             return state; // 数据没有变化，不更新状态
         }
-        
+
         // 检查是否是分组数据（PlateGroup[]）
         let baseStats;
         if (isGroupData) {
@@ -124,11 +124,11 @@ export const usePlateStore = create<PlateStore>((set, get) => ({
         const hasChanges = Object.keys(newSettings).some(
             key => state.settings[key as keyof typeof state.settings] !== newSettings[key as keyof typeof newSettings]
         );
-        
+
         if (!hasChanges) {
             return state; // 设置没有变化，不更新状态
         }
-        
+
         return {
             settings: { ...state.settings, ...newSettings }
         };

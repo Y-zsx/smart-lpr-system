@@ -656,7 +656,49 @@ sudo systemctl reload nginx
 
 ## Nginx 反向代理配置（完整版）
 
-如果需要更完整的配置，可以使用以下配置：
+### 怎么配（操作步骤）
+
+1. **SSH 登录服务器**（如 `ssh root@你的服务器IP` 或使用 smartlpr.cloud 对应主机）。
+
+2. **打开站点配置**（实际文件名可能是 `smart-lpr`、`default` 或你的域名）：
+   ```bash
+   sudo vim /etc/nginx/sites-available/smart-lpr
+   # 或
+   sudo vim /etc/nginx/conf.d/smart-lpr.conf
+   ```
+
+3. **在 `server { ... }` 里做两件事**（顺序不要反）：
+   - 在 **`location /api` 之前** 增加一段 `location /api/media/upload-video`（见下方「视频上传专用 location」）。
+   - 把原来的 **`client_max_body_size 10M;`** 改成 **`client_max_body_size 20M;`**（或删除该行，用下面默认 20M）。
+
+4. **保存后检查并重载**：
+   ```bash
+   sudo nginx -t && sudo systemctl reload nginx
+   ```
+
+**若已有完整 server 块**，只需在 `location /api` 之前插入下面这一段即可：
+
+```nginx
+    # 视频上传接口：需要更大 body 和更长超时（避免 413）
+    location /api/media/upload-video {
+        client_max_body_size 512M;
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
+        proxy_request_buffering off;
+        proxy_buffering off;
+    }
+```
+
+---
+
+如需完整 server 配置，可使用以下内容（将 `your-domain.com` 改为你的域名，如 `smartlpr.cloud`）：
 
 ```bash
 sudo vim /etc/nginx/sites-available/smart-lpr

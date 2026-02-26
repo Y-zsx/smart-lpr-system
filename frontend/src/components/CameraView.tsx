@@ -12,6 +12,15 @@ interface RecentRecognition {
     plates: LicensePlate[];
 }
 
+/** 与“发送帧”同步的识别结果：展示的是当时送识别的画面，避免视频播放与结果不同步 */
+interface RecognitionSnapshot {
+    url: string;
+    rect?: Rect;
+    plates: LicensePlate[];
+    captureWidth: number;
+    captureHeight: number;
+}
+
 interface CameraViewProps {
     cameraId?: string; // 可选的摄像头ID，如果提供则使用指定的摄像头，否则使用选中的摄像头
     independentScanning?: boolean; // 是否使用独立的扫描状态（多窗口模式）
@@ -28,6 +37,8 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     const [detectedRect, setDetectedRect] = useState<Rect | null>(null);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
     const [recentRecognition, setRecentRecognition] = useState<RecentRecognition | null>(null);
+    /** 识别结果与发送帧一致时的快照（视频文件模式下避免“车已过了才出结果”的错位感） */
+    const [recognitionSnapshot, setRecognitionSnapshot] = useState<RecognitionSnapshot | null>(null);
     const [inputResolutionLabel, setInputResolutionLabel] = useState<string>('未知');
     const [blacklist, setBlacklist] = useState<Set<string>>(new Set());
     const mjpegRefreshIntervalRef = useRef<number | null>(null);
@@ -63,8 +74,12 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     const recentlySeenPlatesRef = useRef<Map<string, number>>(new Map());
     const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const retryScheduledRef = useRef<boolean>(false);
+    /** 视频文件模式：串行识别，避免多请求与快照错位 */
+    const recognitionInFlightRef = useRef(false);
+    const snapshotUrlToRevokeRef = useRef<string | null>(null);
+    const snapshotClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const MIN_CAPTURE_SHORT_EDGE = 540;
-    const JPEG_CAPTURE_QUALITY = 0.95;
+    const JPEG_CAPTURE_QUALITY = 0.88;
     // 加载黑名单
     useEffect(() => {
         const loadBlacklist = async () => {
@@ -109,14 +124,14 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
             // 视频文件模式 - 确保视频有 src 并开始播放
             if (fileVideoRef.current && fileVideoUrl) {
                 const video = fileVideoRef.current;
-                
+
                 // 确保 src 已设置
                 if (!video.src || video.src !== fileVideoUrl) {
                     console.log('设置视频 src:', fileVideoUrl.substring(0, 50));
                     video.src = fileVideoUrl;
                     video.load();
                 }
-                
+
                 try {
                     // 如果视频已经加载，尝试播放
                     if (video.readyState >= 2) {
@@ -140,7 +155,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                                 setHasPermission(false);
                             });
                         };
-                        
+
                         if (video.readyState >= 1) {
                             // 已经有元数据，等待可以播放
                             video.addEventListener('canplay', playWhenReady, { once: true });
@@ -178,7 +193,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         // 本地摄像头模式
         try {
             const constraints: MediaStreamConstraints = {
-                video: currentCamera.deviceId 
+                video: currentCamera.deviceId
                     ? {
                         deviceId: { exact: currentCamera.deviceId },
                         width: { ideal: 1280 },
@@ -270,7 +285,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
 
         // 更新参考帧
         lastFrameDataRef.current.set(data);
-        
+
         const avgDiff = diff / count;
         return avgDiff > 5;
     };
@@ -299,11 +314,11 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         const context = canvas.getContext('2d', { willReadFrequently: true });
         if (!context) return;
 
-        const sourceWidth = (isLocal || isFile) 
-            ? (sourceElement as HTMLVideoElement).videoWidth 
+        const sourceWidth = (isLocal || isFile)
+            ? (sourceElement as HTMLVideoElement).videoWidth
             : (sourceElement as HTMLImageElement).naturalWidth;
-        const sourceHeight = (isLocal || isFile) 
-            ? (sourceElement as HTMLVideoElement).videoHeight 
+        const sourceHeight = (isLocal || isFile)
+            ? (sourceElement as HTMLVideoElement).videoHeight
             : (sourceElement as HTMLImageElement).naturalHeight;
 
         if (!sourceWidth || !sourceHeight || sourceWidth === 0 || sourceHeight === 0) {
@@ -340,8 +355,13 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                 return;
             }
 
+            // 视频文件模式：串行识别，保证“结果”和“发送的那一帧”一一对应，避免错位
+            if (isFile && recognitionInFlightRef.current) return;
+
             canvas.toBlob(async (blob) => {
                 if (!blob) return;
+                if (isFile) recognitionInFlightRef.current = true;
+                const snapshotUrl = URL.createObjectURL(blob);
                 try {
                     const { plates } = await plateService.recognizeFromFile(
                         blob, 'stream',
@@ -376,6 +396,28 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                     const isAnyBlacklisted = valid.some(p => blacklist.has(p.number));
                     setRecentRecognition({ plates: valid });
                     setTimeout(() => setRecentRecognition(null), isAnyBlacklisted ? 10000 : 5000);
+
+                    // 结果与发送帧同步：用送识别的画面快照展示，避免“车已过了才出结果”
+                    setRecognitionSnapshot(prev => {
+                        if (prev?.url) URL.revokeObjectURL(prev.url);
+                        return {
+                            url: snapshotUrl,
+                            rect: valid[0].rect,
+                            plates: valid,
+                            captureWidth: width,
+                            captureHeight: height
+                        };
+                    });
+                    snapshotUrlToRevokeRef.current = snapshotUrl;
+                    if (snapshotClearTimeoutRef.current) clearTimeout(snapshotClearTimeoutRef.current);
+                    snapshotClearTimeoutRef.current = setTimeout(() => {
+                        snapshotClearTimeoutRef.current = null;
+                        setRecognitionSnapshot(prev => {
+                            if (prev?.url) URL.revokeObjectURL(prev.url);
+                            snapshotUrlToRevokeRef.current = null;
+                            return null;
+                        });
+                    }, isAnyBlacklisted ? 10000 : 5000);
 
                     const cooldownMs = (settings.plateCooldownSeconds ?? 30) * 1000;
                     const camKey = effectiveCameraId || 'default';
@@ -427,6 +469,10 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                     }
                 } catch (e) {
                     // 忽略
+                } finally {
+                    if (isFile) recognitionInFlightRef.current = false;
+                    // 若未写入 recognitionSnapshot（如 valid 为空），则释放本次快照
+                    if (isFile && snapshotUrlToRevokeRef.current !== snapshotUrl) URL.revokeObjectURL(snapshotUrl);
                 }
             }, 'image/jpeg', JPEG_CAPTURE_QUALITY);
         } catch (e) {
@@ -441,6 +487,8 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
             if (mjpegRefreshIntervalRef.current) clearInterval(mjpegRefreshIntervalRef.current);
             if (healthCheckIntervalRef.current) clearInterval(healthCheckIntervalRef.current);
             if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
+            if (snapshotClearTimeoutRef.current) clearTimeout(snapshotClearTimeoutRef.current);
+            setRecognitionSnapshot(prev => { if (prev?.url) URL.revokeObjectURL(prev.url); return null; });
         };
     }, [effectiveCameraId, currentCamera?.id]);
 
@@ -453,7 +501,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
             hasUrl: !!currentCamera?.url,
             url: currentCamera?.url?.substring(0, 50)
         });
-        
+
         // 停止之前的摄像头
         if (!isFile) {
             stopCamera();
@@ -461,7 +509,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
             // 视频文件模式：暂停播放
             fileVideoRef.current.pause();
         }
-        
+
         // 如果是视频文件，直接设置 src 并加载
         if (isFile && fileVideoUrl && fileVideoRef.current) {
             console.log('设置视频文件 src:', {
@@ -471,16 +519,16 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                 hasRef: !!fileVideoRef.current,
                 effectiveCameraId
             });
-            
+
             // 直接设置 src，确保视频元素有正确的 URL
             const video = fileVideoRef.current;
             const needsReload = !video.src || video.src !== fileVideoUrl;
-            
+
             if (needsReload) {
                 video.src = fileVideoUrl;
                 video.load(); // 强制重新加载
             }
-            
+
             // 尝试自动播放
             const tryPlay = async () => {
                 try {
@@ -496,7 +544,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                     setHasPermission(true);
                 }
             };
-            
+
             // 如果视频已经可以播放，立即播放
             if (video.readyState >= 3) {
                 tryPlay();
@@ -517,7 +565,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                 video.addEventListener('canplay', onCanPlay, { once: true });
                 video.addEventListener('loadeddata', onLoadedData, { once: true });
             }
-            
+
             setError('');
         } else if (!isLocal && !isFile && (currentCamera?.url || streamPreviewUrl)) {
             // 网络流也需要立即加载预览
@@ -586,7 +634,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         // 计算 object-cover 缩放
         const containerRatio = dimensions.width / dimensions.height;
         const sourceRatio = sourceWidth / sourceHeight;
-        
+
         let scale = 1;
         let offsetX = 0;
         let offsetY = 0;
@@ -620,90 +668,90 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                             preload="auto"
                             className="w-full h-full object-cover"
                             onError={(e) => {
-                                    console.error('视频播放错误:', e);
-                                    const video = e.currentTarget;
-                                    const error = video.error;
-                                    let errorMsg = '无法播放视频文件';
-                                    
-                                    if (error) {
-                                        console.error('视频错误详情:', {
-                                            code: error.code,
-                                            message: error.message
-                                        });
-                                        switch (error.code) {
-                                            case error.MEDIA_ERR_ABORTED:
-                                                errorMsg = '视频播放被中止';
-                                                break;
-                                            case error.MEDIA_ERR_NETWORK:
-                                                errorMsg = '网络错误，请检查文件是否有效';
-                                                break;
-                                            case error.MEDIA_ERR_DECODE:
-                                                errorMsg = '视频解码失败，请检查文件格式';
-                                                break;
-                                            case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
-                                                errorMsg = '视频格式不支持，请使用 MP4 或 WebM 格式';
-                                                break;
-                                            default:
-                                                errorMsg = `视频文件可能已失效 (错误码: ${error.code})，请重新选择文件`;
-                                        }
-                                    } else {
-                                        errorMsg = '无法播放视频文件，请检查文件格式或重新选择';
+                                console.error('视频播放错误:', e);
+                                const video = e.currentTarget;
+                                const error = video.error;
+                                let errorMsg = '无法播放视频文件';
+
+                                if (error) {
+                                    console.error('视频错误详情:', {
+                                        code: error.code,
+                                        message: error.message
+                                    });
+                                    switch (error.code) {
+                                        case error.MEDIA_ERR_ABORTED:
+                                            errorMsg = '视频播放被中止';
+                                            break;
+                                        case error.MEDIA_ERR_NETWORK:
+                                            errorMsg = '网络错误，请检查文件是否有效';
+                                            break;
+                                        case error.MEDIA_ERR_DECODE:
+                                            errorMsg = '视频解码失败，请检查文件格式';
+                                            break;
+                                        case error.MEDIA_ERR_SRC_NOT_SUPPORTED:
+                                            errorMsg = '视频格式不支持，请使用 MP4 或 WebM 格式';
+                                            break;
+                                        default:
+                                            errorMsg = `视频文件可能已失效 (错误码: ${error.code})，请重新选择文件`;
                                     }
-                                    
-                                    setError(errorMsg);
-                                    setHasPermission(false);
-                                    updateCameraStatus(currentCamera.id, 'offline');
-                                }}
-                                onLoadedMetadata={() => {
-                                    console.log('视频元数据加载完成', { cameraId: currentCamera?.id });
-                                    // 视频元数据加载完成，尝试自动播放
-                                    if (fileVideoRef.current && fileVideoUrl) {
-                                        fileVideoRef.current.play().catch(err => {
-                                            console.log('自动播放被阻止，等待用户交互:', err);
-                                        });
-                                        setHasPermission(true);
-                                        setError('');
-                                        updateCameraStatus(currentCamera.id, 'online');
-                                    }
-                                }}
-                                onCanPlay={() => {
-                                    console.log('视频可以播放', { cameraId: currentCamera?.id });
-                                    // 视频可以播放时，尝试自动播放
-                                    if (fileVideoRef.current && fileVideoUrl) {
-                                        fileVideoRef.current.play().catch(err => {
-                                            console.log('自动播放被阻止:', err);
-                                        });
-                                        setHasPermission(true);
-                                        setError('');
-                                        updateCameraStatus(currentCamera.id, 'online');
-                                    }
-                                }}
-                                onPlay={() => {
-                                    console.log('视频开始播放', { cameraId: currentCamera?.id });
+                                } else {
+                                    errorMsg = '无法播放视频文件，请检查文件格式或重新选择';
+                                }
+
+                                setError(errorMsg);
+                                setHasPermission(false);
+                                updateCameraStatus(currentCamera.id, 'offline');
+                            }}
+                            onLoadedMetadata={() => {
+                                console.log('视频元数据加载完成', { cameraId: currentCamera?.id });
+                                // 视频元数据加载完成，尝试自动播放
+                                if (fileVideoRef.current && fileVideoUrl) {
+                                    fileVideoRef.current.play().catch(err => {
+                                        console.log('自动播放被阻止，等待用户交互:', err);
+                                    });
                                     setHasPermission(true);
                                     setError('');
                                     updateCameraStatus(currentCamera.id, 'online');
-                                }}
-                                onLoadStart={() => {
-                                    console.log('视频开始加载:', {
-                                        url: fileVideoUrl?.substring(0, 50),
-                                        cameraId: currentCamera.id,
-                                        cameraName: currentCamera.name,
-                                        hasRef: !!fileVideoRef.current,
-                                        videoSrc: fileVideoRef.current?.src?.substring(0, 50)
+                                }
+                            }}
+                            onCanPlay={() => {
+                                console.log('视频可以播放', { cameraId: currentCamera?.id });
+                                // 视频可以播放时，尝试自动播放
+                                if (fileVideoRef.current && fileVideoUrl) {
+                                    fileVideoRef.current.play().catch(err => {
+                                        console.log('自动播放被阻止:', err);
                                     });
-                                }}
-                                onLoadedData={() => {
-                                    console.log('视频数据加载完成');
-                                }}
-                            />
-                        ) : (
-                            <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                                <AlertTriangle size={48} className="mb-4 text-yellow-500" />
-                                <p>未配置视频文件</p>
-                                <p className="text-sm mt-2 text-gray-400">请重新添加视频文件</p>
-                            </div>
-                        )
+                                    setHasPermission(true);
+                                    setError('');
+                                    updateCameraStatus(currentCamera.id, 'online');
+                                }
+                            }}
+                            onPlay={() => {
+                                console.log('视频开始播放', { cameraId: currentCamera?.id });
+                                setHasPermission(true);
+                                setError('');
+                                updateCameraStatus(currentCamera.id, 'online');
+                            }}
+                            onLoadStart={() => {
+                                console.log('视频开始加载:', {
+                                    url: fileVideoUrl?.substring(0, 50),
+                                    cameraId: currentCamera.id,
+                                    cameraName: currentCamera.name,
+                                    hasRef: !!fileVideoRef.current,
+                                    videoSrc: fileVideoRef.current?.src?.substring(0, 50)
+                                });
+                            }}
+                            onLoadedData={() => {
+                                console.log('视频数据加载完成');
+                            }}
+                        />
+                    ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                            <AlertTriangle size={48} className="mb-4 text-yellow-500" />
+                            <p>未配置视频文件</p>
+                            <p className="text-sm mt-2 text-gray-400">请重新添加视频文件</p>
+                        </div>
+                    )
                 ) : hasPermission ? (
                     isLocal ? (
                         <video
@@ -780,11 +828,10 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                                 const isAnyBlacklisted = recentRecognition.plates.some(p => blacklist.has(p.number));
                                 return (
                                     <div
-                                        className={`absolute border-2 rounded transition-all duration-300 ${
-                                            isAnyBlacklisted 
-                                                ? 'border-red-500 bg-red-500/30 animate-pulse' 
+                                        className={`absolute border-2 rounded transition-all duration-300 ${isAnyBlacklisted
+                                                ? 'border-red-500 bg-red-500/30 animate-pulse'
                                                 : 'border-green-500 bg-green-500/20'
-                                        }`}
+                                            }`}
                                         style={{
                                             left: `${detectedRect.x * scale + offsetX}px`,
                                             top: `${detectedRect.y * scale + offsetY}px`,
@@ -792,9 +839,8 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                                             height: `${detectedRect.h * scale}px`,
                                         }}
                                     >
-                                        <div className={`absolute -top-7 left-0 text-white text-xs px-2 py-0.5 rounded font-bold ${
-                                            isAnyBlacklisted ? 'bg-red-600' : 'bg-green-500'
-                                        }`}>
+                                        <div className={`absolute -top-7 left-0 text-white text-xs px-2 py-0.5 rounded font-bold ${isAnyBlacklisted ? 'bg-red-600' : 'bg-green-500'
+                                            }`}>
                                             {recentRecognition.plates[0].number}
                                             {recentRecognition.plates.length > 1 && (
                                                 <span className="ml-1 opacity-90">+{recentRecognition.plates.length - 1}</span>
@@ -819,22 +865,45 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                     </div>
                 )}
 
-                {/* 识别结果卡片（支持多车牌） */}
-                {recentRecognition && recentRecognition.plates.length > 0 && (
+                {/* 识别结果卡片：优先用“送识别的画面”快照，避免视频文件模式下列车已过才出结果的错位 */}
+                {(recognitionSnapshot || (recentRecognition && recentRecognition.plates.length > 0)) && (
                     (() => {
-                        const { plates } = recentRecognition;
+                        const snap = recognitionSnapshot;
+                        const plates = snap?.plates ?? (recentRecognition!.plates);
                         const isAnyBlacklisted = plates.some(p => blacklist.has(p.number));
+                        const showSnapshot = !!snap && plates.length > 0;
                         return (
-                            <div className={`absolute bottom-24 left-1/2 transform -translate-x-1/2 z-30 pointer-events-auto animate-in slide-in-from-bottom-5 duration-300 px-2 sm:px-0 ${
-                                isAnyBlacklisted ? 'w-full max-w-md' : 'w-full max-w-sm'
-                            }`}>
-                                <div className={`rounded-xl shadow-2xl border-2 overflow-hidden ${
-                                    isAnyBlacklisted ? 'bg-red-50 border-red-500' : 'bg-white border-blue-200'
+                            <div className={`absolute bottom-24 left-1/2 transform -translate-x-1/2 z-30 pointer-events-auto animate-in slide-in-from-bottom-5 duration-300 px-2 sm:px-0 ${isAnyBlacklisted ? 'w-full max-w-md' : 'w-full max-w-sm'
                                 }`}>
+                                <div className={`rounded-xl shadow-2xl border-2 overflow-hidden ${isAnyBlacklisted ? 'bg-red-50 border-red-500' : 'bg-white border-blue-200'
+                                    }`}>
                                     {isAnyBlacklisted && (
                                         <div className="bg-red-600 text-white px-4 py-2 flex items-center gap-2">
                                             <ShieldAlert size={18} className="animate-pulse" />
                                             <span className="font-bold">⚠️ 黑名单车辆告警</span>
+                                        </div>
+                                    )}
+                                    {showSnapshot && (
+                                        <div className="relative w-full bg-black" style={{ maxHeight: 'min(40vh, 280px)' }}>
+                                            <img
+                                                src={snap!.url}
+                                                alt="识别帧"
+                                                className="w-full h-auto object-contain block"
+                                            />
+                                            {snap!.rect && snap!.captureWidth > 0 && (
+                                                <div
+                                                    className="absolute border-2 border-green-400 bg-green-400/20 pointer-events-none"
+                                                    style={{
+                                                        left: `${(snap!.rect.x / snap!.captureWidth) * 100}%`,
+                                                        top: `${(snap!.rect.y / snap!.captureHeight) * 100}%`,
+                                                        width: `${(snap!.rect.w / snap!.captureWidth) * 100}%`,
+                                                        height: `${(snap!.rect.h / snap!.captureHeight) * 100}%`
+                                                    }}
+                                                />
+                                            )}
+                                            <div className="absolute bottom-1 left-1 right-1 text-right">
+                                                <span className="text-[10px] text-white/80 bg-black/50 px-1.5 py-0.5 rounded">与发送帧同步</span>
+                                            </div>
                                         </div>
                                     )}
                                     <div className="p-4">
@@ -843,12 +912,11 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                                                 {plates.map((p) => (
                                                     <span
                                                         key={p.id}
-                                                        className={`text-xl font-bold font-mono px-2.5 py-1 rounded border flex items-center gap-1 ${
-                                                            p.type === 'blue' ? 'bg-blue-600 text-white border-blue-600' :
-                                                            p.type === 'green' ? 'bg-green-50 text-green-600 border-green-200' :
-                                                            p.type === 'yellow' ? 'bg-yellow-500 text-white border-yellow-500' :
-                                                            'bg-gray-100 text-gray-700 border-gray-200'
-                                                        }`}
+                                                        className={`text-xl font-bold font-mono px-2.5 py-1 rounded border flex items-center gap-1 ${p.type === 'blue' ? 'bg-blue-600 text-white border-blue-600' :
+                                                                p.type === 'green' ? 'bg-green-50 text-green-600 border-green-200' :
+                                                                    p.type === 'yellow' ? 'bg-yellow-500 text-white border-yellow-500' :
+                                                                        'bg-gray-100 text-gray-700 border-gray-200'
+                                                            }`}
                                                     >
                                                         {p.number}
                                                         {blacklist.has(p.number) && (
@@ -858,7 +926,10 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                                                 ))}
                                             </div>
                                             <button
-                                                onClick={() => setRecentRecognition(null)}
+                                                onClick={() => {
+                                                    setRecognitionSnapshot(prev => { if (prev?.url) URL.revokeObjectURL(prev.url); return null; });
+                                                    setRecentRecognition(null);
+                                                }}
                                                 className="text-gray-400 hover:text-gray-600 transition-colors"
                                             >
                                                 <X size={18} />
