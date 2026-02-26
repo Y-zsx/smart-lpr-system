@@ -61,6 +61,9 @@ INSTALL_DEPS=1 ./scripts/deploy-backend.sh
 
 # 自定义 PM2 进程名 / 健康检查地址
 PM2_APP_NAME=smart-lpr-backend BACKEND_HEALTH_URL=http://localhost:8000/api/health ./scripts/deploy-backend.sh
+
+# 调整健康检查重试（默认 15 次，每次间隔 2 秒）
+HEALTH_RETRY_MAX=20 HEALTH_RETRY_INTERVAL=3 ./scripts/deploy-backend.sh
 ```
 
 ### AI 一键发布（Linux）
@@ -78,6 +81,9 @@ AUTO_CREATE_VENV=1 INSTALL_DEPS=1 ./scripts/deploy-ai.sh
 
 # 自定义 PM2 进程名 / 健康检查地址
 PM2_APP_NAME=smart-lpr-ai AI_HEALTH_URL=http://localhost:8001/health ./scripts/deploy-ai.sh
+
+# 调整健康检查重试（默认 15 次，每次间隔 2 秒）
+HEALTH_RETRY_MAX=20 HEALTH_RETRY_INTERVAL=3 ./scripts/deploy-ai.sh
 ```
 
 ### 统一发布入口（Linux）

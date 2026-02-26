@@ -19,6 +19,8 @@ AI_PORT="${AI_PORT:-8001}"
 AI_HEALTH_URL="${AI_HEALTH_URL:-http://localhost:8001/health}"
 SAVE_PM2="${SAVE_PM2:-0}"                  # set 1 to run pm2 save
 SKIP_HEALTH_CHECK="${SKIP_HEALTH_CHECK:-0}" # set 1 to skip health check
+HEALTH_RETRY_MAX="${HEALTH_RETRY_MAX:-15}"  # default: retry 15 times
+HEALTH_RETRY_INTERVAL="${HEALTH_RETRY_INTERVAL:-2}" # seconds
 
 if [[ ! -d "$AI_DIR" ]]; then
   echo "[ERROR] AI directory not found: $AI_DIR"
@@ -30,6 +32,7 @@ echo "[INFO] AI dir:            $AI_DIR"
 echo "[INFO] Venv dir:          $VENV_DIR"
 echo "[INFO] PM2 app name:      $PM2_APP_NAME"
 echo "[INFO] Health check URL:  $AI_HEALTH_URL"
+echo "[INFO] Health retries:    $HEALTH_RETRY_MAX x ${HEALTH_RETRY_INTERVAL}s"
 
 cd "$AI_DIR"
 
@@ -75,9 +78,19 @@ if [[ "$SKIP_HEALTH_CHECK" == "1" ]]; then
 fi
 
 echo "[STEP] Checking AI health..."
-HEALTH_PAYLOAD="$(curl -fsS "$AI_HEALTH_URL" || true)"
+HEALTH_PAYLOAD=""
+for ((i=1; i<=HEALTH_RETRY_MAX; i++)); do
+  HEALTH_PAYLOAD="$(curl -fsS "$AI_HEALTH_URL" || true)"
+  if [[ -n "$HEALTH_PAYLOAD" ]]; then
+    break
+  fi
+  echo "[INFO] Health check retry $i/$HEALTH_RETRY_MAX failed, waiting ${HEALTH_RETRY_INTERVAL}s..."
+  sleep "$HEALTH_RETRY_INTERVAL"
+done
 if [[ -z "$HEALTH_PAYLOAD" ]]; then
   echo "[ERROR] AI health endpoint is unreachable: $AI_HEALTH_URL"
+  echo "[INFO] Recent PM2 logs:"
+  pm2 logs "$PM2_APP_NAME" --lines 120 --nostream || true
   exit 1
 fi
 
