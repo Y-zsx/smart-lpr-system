@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useCameraStore, CameraDevice } from '../store/cameraStore';
 import { Video, Globe, Plus, Trash2, Settings, MonitorPlay, FileVideo, RefreshCw, MapPin, X, Edit2 } from 'lucide-react';
 import { LocationPicker } from './LocationPicker';
-import { apiClient } from '../api/client';
+import { apiClient, OnvifDiscoveredDevice, StreamProtocol, StreamVendor } from '../api/client';
 import { useToastContext } from '../contexts/ToastContext';
 import { useConfirmContext } from '../contexts/ConfirmContext';
 
@@ -33,6 +33,21 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
     });
     const [showLocationPicker, setShowLocationPicker] = useState(false);
     const [locationPickerFor, setLocationPickerFor] = useState<'add' | 'edit'>('add');
+    const [streamTemplate, setStreamTemplate] = useState({
+        vendor: 'hikvision' as StreamVendor,
+        protocol: 'rtsp' as StreamProtocol,
+        host: '',
+        port: 554,
+        username: '',
+        password: '',
+        channel: 1,
+        streamType: 'main' as 'main' | 'sub',
+        customPath: ''
+    });
+    const [isBuildingTemplate, setIsBuildingTemplate] = useState(false);
+    const [isTestingStream, setIsTestingStream] = useState(false);
+    const [isDiscoveringOnvif, setIsDiscoveringOnvif] = useState(false);
+    const [onvifDevices, setOnvifDevices] = useState<OnvifDiscoveredDevice[]>([]);
 
     // 移除自动刷新设备列表，避免自动请求摄像头权限
     // 用户需要时可以手动点击刷新按钮
@@ -151,6 +166,88 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
             console.error('更新摄像头失败:', error);
             toast.error('更新失败，请重试');
         }
+    };
+
+    const buildTemplateFor = async (target: 'add' | 'edit') => {
+        try {
+            setIsBuildingTemplate(true);
+            const result = await apiClient.buildCameraStreamTemplate(streamTemplate);
+            if (target === 'add') {
+                setNewCam(prev => ({ ...prev, url: result.url }));
+            } else {
+                setEditCam(prev => ({ ...prev, url: result.url }));
+            }
+            toast.success('已生成并填入流地址');
+        } catch (error) {
+            console.error('生成流地址失败:', error);
+            toast.error(error instanceof Error ? error.message : '生成流地址失败');
+        } finally {
+            setIsBuildingTemplate(false);
+        }
+    };
+
+    const testStream = async (url: string) => {
+        const streamUrl = (url || '').trim();
+        if (!streamUrl) {
+            toast.warning('请先填写流地址');
+            return;
+        }
+        try {
+            setIsTestingStream(true);
+            const result = await apiClient.testCameraStream(streamUrl);
+            if (result.ok) {
+                const info = result.details
+                    ? `${result.details.codec || 'unknown'} ${result.details.width || '?'}x${result.details.height || '?'}`
+                    : '';
+                toast.success(info ? `连通成功：${info}` : '连通成功');
+            } else {
+                toast.error(result.message || '连通失败');
+            }
+        } catch (error) {
+            console.error('连通性测试失败:', error);
+            toast.error(error instanceof Error ? error.message : '连通性测试失败');
+        } finally {
+            setIsTestingStream(false);
+        }
+    };
+
+    const discoverOnvifDevices = async () => {
+        try {
+            setIsDiscoveringOnvif(true);
+            const result = await apiClient.discoverOnvifDevices(3500);
+            setOnvifDevices(result.devices || []);
+            if ((result.devices || []).length === 0) {
+                toast.info('未发现 ONVIF 设备，请确认摄像头与服务端处于同一局域网且开启 ONVIF');
+            } else {
+                toast.success(`发现 ${(result.devices || []).length} 个设备`);
+            }
+        } catch (error) {
+            console.error('ONVIF 发现失败:', error);
+            toast.error(error instanceof Error ? error.message : 'ONVIF 发现失败');
+        } finally {
+            setIsDiscoveringOnvif(false);
+        }
+    };
+
+    const applyDiscoveredDevice = (device: OnvifDiscoveredDevice, target: 'add' | 'edit') => {
+        setStreamTemplate(prev => ({
+            ...prev,
+            vendor: device.vendorGuess || 'custom',
+            protocol: 'rtsp',
+            host: device.ip || prev.host
+        }));
+        if (target === 'add') {
+            setNewCam(prev => ({
+                ...prev,
+                name: prev.name || device.name || `摄像头-${device.ip || 'ONVIF'}`
+            }));
+        } else {
+            setEditCam(prev => ({
+                ...prev,
+                name: prev.name || device.name || `摄像头-${device.ip || 'ONVIF'}`
+            }));
+        }
+        toast.success('已回填设备信息，请继续生成流地址');
     };
 
     return (
@@ -320,6 +417,129 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                                         onChange={e => setNewCam({ ...newCam, url: e.target.value })}
                                     />
                                     <p className="text-xs text-gray-400 mt-1">支持 MJPEG、HLS 等格式</p>
+                                    <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-2 space-y-2">
+                                        <div className="text-xs font-medium text-gray-700">智能接入助手</div>
+                                        <p className="text-[11px] text-gray-500">推荐流程：先自动发现设备，再生成播放地址，最后测试连接。</p>
+                                        <button
+                                            type="button"
+                                            onClick={discoverOnvifDevices}
+                                            disabled={isDiscoveringOnvif}
+                                            className="w-full px-2 py-1.5 text-xs rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-60"
+                                        >
+                                            {isDiscoveringOnvif ? '正在发现设备...' : '自动发现摄像头（局域网）'}
+                                        </button>
+                                        {onvifDevices.length > 0 && (
+                                            <div className="max-h-28 overflow-y-auto rounded border border-gray-200 bg-white">
+                                                {onvifDevices.map((device, idx) => (
+                                                    <button
+                                                        key={`${device.endpoint || device.ip || 'dev'}-${idx}`}
+                                                        type="button"
+                                                        onClick={() => applyDiscoveredDevice(device, 'add')}
+                                                        className="w-full text-left px-2 py-1.5 border-b border-gray-100 last:border-b-0 hover:bg-blue-50"
+                                                    >
+                                                        <div className="text-xs font-medium text-gray-700">
+                                                            {device.name || '未命名设备'} {device.ip ? `(${device.ip})` : ''}
+                                                        </div>
+                                                        <div className="text-[11px] text-gray-500">
+                                                            厂商: {device.vendorGuess} {device.location ? `| 位置: ${device.location}` : ''}
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <select
+                                                className="px-2 py-1.5 text-xs rounded border border-gray-200 bg-white"
+                                                value={streamTemplate.vendor}
+                                                onChange={(e) => setStreamTemplate(prev => ({ ...prev, vendor: e.target.value as StreamVendor }))}
+                                            >
+                                                <option value="hikvision">海康</option>
+                                                <option value="dahua">大华</option>
+                                                <option value="uniview">宇视</option>
+                                                <option value="axis">Axis</option>
+                                                <option value="custom">自定义</option>
+                                            </select>
+                                            <select
+                                                className="px-2 py-1.5 text-xs rounded border border-gray-200 bg-white"
+                                                value={streamTemplate.protocol}
+                                                onChange={(e) => setStreamTemplate(prev => ({ ...prev, protocol: e.target.value as StreamProtocol }))}
+                                            >
+                                                <option value="rtsp">RTSP</option>
+                                                <option value="http">HTTP</option>
+                                            </select>
+                                        </div>
+                                        <input
+                                            className="w-full px-2 py-1.5 text-xs rounded border border-gray-200 bg-white"
+                                            placeholder="设备IP或域名，例如 192.168.1.64"
+                                            value={streamTemplate.host}
+                                            onChange={(e) => setStreamTemplate(prev => ({ ...prev, host: e.target.value }))}
+                                        />
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <input
+                                                className="px-2 py-1.5 text-xs rounded border border-gray-200 bg-white"
+                                                placeholder="端口"
+                                                type="number"
+                                                value={streamTemplate.port}
+                                                onChange={(e) => setStreamTemplate(prev => ({ ...prev, port: Number(e.target.value) || 0 }))}
+                                            />
+                                            <input
+                                                className="px-2 py-1.5 text-xs rounded border border-gray-200 bg-white"
+                                                placeholder="通道"
+                                                type="number"
+                                                value={streamTemplate.channel}
+                                                onChange={(e) => setStreamTemplate(prev => ({ ...prev, channel: Number(e.target.value) || 1 }))}
+                                            />
+                                            <select
+                                                className="px-2 py-1.5 text-xs rounded border border-gray-200 bg-white"
+                                                value={streamTemplate.streamType}
+                                                onChange={(e) => setStreamTemplate(prev => ({ ...prev, streamType: e.target.value as 'main' | 'sub' }))}
+                                            >
+                                                <option value="main">主码流</option>
+                                                <option value="sub">子码流</option>
+                                            </select>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <input
+                                                className="px-2 py-1.5 text-xs rounded border border-gray-200 bg-white"
+                                                placeholder="用户名"
+                                                value={streamTemplate.username}
+                                                onChange={(e) => setStreamTemplate(prev => ({ ...prev, username: e.target.value }))}
+                                            />
+                                            <input
+                                                className="px-2 py-1.5 text-xs rounded border border-gray-200 bg-white"
+                                                placeholder="密码"
+                                                type="password"
+                                                value={streamTemplate.password}
+                                                onChange={(e) => setStreamTemplate(prev => ({ ...prev, password: e.target.value }))}
+                                            />
+                                        </div>
+                                        {streamTemplate.vendor === 'custom' && (
+                                            <input
+                                                className="w-full px-2 py-1.5 text-xs rounded border border-gray-200 bg-white"
+                                                placeholder="/your/path 或完整 URL"
+                                                value={streamTemplate.customPath}
+                                                onChange={(e) => setStreamTemplate(prev => ({ ...prev, customPath: e.target.value }))}
+                                            />
+                                        )}
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => buildTemplateFor('add')}
+                                                disabled={isBuildingTemplate}
+                                                className="px-2 py-1.5 text-xs rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60"
+                                            >
+                                                {isBuildingTemplate ? '生成中...' : '生成播放地址'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => testStream(newCam.url)}
+                                                disabled={isTestingStream}
+                                                className="px-2 py-1.5 text-xs rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                                            >
+                                                {isTestingStream ? '测试中...' : '测试连接'}
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             ) : (
                                 <div>
@@ -450,6 +670,52 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                                         onChange={e => setEditCam({ ...editCam, url: e.target.value })}
                                     />
                                     <p className="text-xs text-gray-400 mt-1">支持 MJPEG、HLS 等格式</p>
+                                    <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-2 space-y-2">
+                                        <div className="text-xs font-medium text-gray-700">智能接入助手</div>
+                                        <p className="text-[11px] text-gray-500">可先发现设备并回填，再一键生成地址和测试连接。</p>
+                                        <button
+                                            type="button"
+                                            onClick={discoverOnvifDevices}
+                                            disabled={isDiscoveringOnvif}
+                                            className="w-full px-2 py-1.5 text-xs rounded bg-sky-600 text-white hover:bg-sky-700 disabled:opacity-60"
+                                        >
+                                            {isDiscoveringOnvif ? '正在发现设备...' : '自动发现摄像头（局域网）'}
+                                        </button>
+                                        {onvifDevices.length > 0 && (
+                                            <div className="max-h-24 overflow-y-auto rounded border border-gray-200 bg-white">
+                                                {onvifDevices.map((device, idx) => (
+                                                    <button
+                                                        key={`${device.endpoint || device.ip || 'dev'}-edit-${idx}`}
+                                                        type="button"
+                                                        onClick={() => applyDiscoveredDevice(device, 'edit')}
+                                                        className="w-full text-left px-2 py-1.5 border-b border-gray-100 last:border-b-0 hover:bg-blue-50"
+                                                    >
+                                                        <div className="text-xs font-medium text-gray-700">
+                                                            {device.name || '未命名设备'} {device.ip ? `(${device.ip})` : ''}
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => buildTemplateFor('edit')}
+                                                disabled={isBuildingTemplate}
+                                                className="px-2 py-1.5 text-xs rounded bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60"
+                                            >
+                                                {isBuildingTemplate ? '生成中...' : '生成播放地址'}
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => testStream(editCam.url)}
+                                                disabled={isTestingStream}
+                                                className="px-2 py-1.5 text-xs rounded bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-60"
+                                            >
+                                                {isTestingStream ? '测试中...' : '测试连接'}
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             ) : (
                                 <div>

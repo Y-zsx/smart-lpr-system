@@ -43,6 +43,13 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     const currentCamera = cameras.find(c => c.id === effectiveCameraId) || cameras[0];
     const isLocal = currentCamera?.type === 'local';
     const isFile = currentCamera?.type === 'file';
+    const isStream = currentCamera?.type === 'stream';
+    const [useDirectStreamPreview, setUseDirectStreamPreview] = useState(false);
+    const proxyStreamUrl = currentCamera?.id ? apiClient.getCameraLiveStreamUrl(currentCamera.id) : '';
+    const directStreamUrl = currentCamera?.url || '';
+    const streamPreviewUrl = isStream
+        ? (useDirectStreamPreview ? directStreamUrl : (proxyStreamUrl || directStreamUrl))
+        : '';
 
     // 使用独立扫描状态或全局扫描状态
     const isScanning = independentScanning ? localScanning : globalScanning;
@@ -57,9 +64,6 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     const retryScheduledRef = useRef<boolean>(false);
     const MIN_CAPTURE_SHORT_EDGE = 540;
     const JPEG_CAPTURE_QUALITY = 0.95;
-    const isHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
-    const isInsecureHttpStream = (url?: string) => Boolean(url && url.startsWith('http://'));
-
     // 加载黑名单
     useEffect(() => {
         const loadBlacklist = async () => {
@@ -93,6 +97,11 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         resizeObserver.observe(containerRef.current);
         return () => resizeObserver.disconnect();
     }, []);
+
+    useEffect(() => {
+        // 摄像头切换时恢复为代理优先，失败后再自动降级直连
+        setUseDirectStreamPreview(false);
+    }, [currentCamera?.id, currentCamera?.url]);
 
     const startCamera = async () => {
         if (isFile) {
@@ -158,58 +167,10 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         }
 
         if (!isLocal) {
-            if (isHttpsPage && isInsecureHttpStream(currentCamera?.url)) {
-                setError('当前页面为 HTTPS，摄像头流地址为 HTTP，浏览器会拦截。请将流地址改为 HTTPS。');
-                setHasPermission(false);
-                updateCameraStatus(currentCamera.id, 'offline');
-                return;
-            }
-
-            // 远程流模式 - MJPEG 轮询刷新
+            // 网络流模式（统一走后端流代理，兼容 RTSP/HLS/HTTP）
             setHasPermission(true);
             setError('');
             updateCameraStatus(currentCamera.id, 'online');
-            
-            // 对于 MJPEG 流，定期刷新图片以获取最新帧
-            if (currentCamera.url && remoteVideoRef.current) {
-                let errorCount = 0;
-                const refreshMjpeg = () => {
-                    if (remoteVideoRef.current && currentCamera.url) {
-                        // 添加时间戳避免缓存
-                        const separator = currentCamera.url.includes('?') ? '&' : '?';
-                        remoteVideoRef.current.src = `${currentCamera.url}${separator}_t=${Date.now()}`;
-                    }
-                };
-                
-                // 监听图片加载错误
-                const handleImageError = () => {
-                    errorCount++;
-                    if (errorCount > 5) {
-                        updateCameraStatus(currentCamera.id, 'offline');
-                        setError('摄像头连接失败，请检查网络或流地址');
-                    }
-                };
-                
-                const handleImageLoad = () => {
-                    errorCount = 0;
-                    updateCameraStatus(currentCamera.id, 'online');
-                };
-                
-                if (remoteVideoRef.current) {
-                    remoteVideoRef.current.onerror = handleImageError;
-                    remoteVideoRef.current.onload = handleImageLoad;
-                }
-                
-                refreshMjpeg();
-                mjpegRefreshIntervalRef.current = window.setInterval(refreshMjpeg, 100); // 每100ms刷新一次
-                
-                // 健康检查：每5秒检查一次连接状态
-                healthCheckIntervalRef.current = window.setInterval(() => {
-                    if (errorCount > 10) {
-                        updateCameraStatus(currentCamera.id, 'offline');
-                    }
-                }, 5000);
-            }
             return;
         }
 
@@ -557,39 +518,15 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
             }
             
             setError('');
-        } else if (!isLocal && !isFile && currentCamera?.url) {
-            if (isHttpsPage && isInsecureHttpStream(currentCamera.url)) {
-                setError('当前页面为 HTTPS，摄像头流地址为 HTTP，浏览器会拦截。请将流地址改为 HTTPS。');
-                setHasPermission(false);
-                updateCameraStatus(currentCamera.id, 'offline');
-                return;
-            }
-
+        } else if (!isLocal && !isFile && (currentCamera?.url || streamPreviewUrl)) {
             // 网络流也需要立即加载预览
             setHasPermission(true);
             updateCameraStatus(currentCamera.id, 'online');
-            
-            // 对于 MJPEG 流，立即开始刷新
-            if (remoteVideoRef.current && currentCamera.url) {
-                const separator = currentCamera.url.includes('?') ? '&' : '?';
-                remoteVideoRef.current.src = `${currentCamera.url}${separator}_t=${Date.now()}`;
-                
-                // 设置刷新间隔
-                if (mjpegRefreshIntervalRef.current) {
-                    clearInterval(mjpegRefreshIntervalRef.current);
-                }
-                mjpegRefreshIntervalRef.current = window.setInterval(() => {
-                    if (remoteVideoRef.current && currentCamera.url) {
-                        const sep = currentCamera.url.includes('?') ? '&' : '?';
-                        remoteVideoRef.current.src = `${currentCamera.url}${sep}_t=${Date.now()}`;
-                    }
-                }, 100); // MJPEG 流刷新间隔
-            }
         } else if (isFile && !currentCamera?.url) {
             console.warn('视频文件摄像头没有 URL:', currentCamera);
             setError('视频文件 URL 缺失，请重新添加视频文件');
         }
-    }, [effectiveCameraId, propCameraId, currentCamera?.id, currentCamera?.url, isFile, isLocal, currentCamera?.name]);
+    }, [effectiveCameraId, propCameraId, currentCamera?.id, currentCamera?.url, isFile, isLocal, currentCamera?.name, streamPreviewUrl]);
 
     useEffect(() => {
         if (!effectiveCameraId || !currentCamera) {
@@ -777,14 +714,21 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                         />
                     ) : (
                         <div className="w-full h-full relative">
-                            {currentCamera.url ? (
+                            {streamPreviewUrl ? (
                                 <img
                                     ref={remoteVideoRef}
-                                    src={currentCamera.url}
+                                    src={streamPreviewUrl}
                                     alt="Remote Stream"
                                     className="w-full h-full object-cover"
                                     crossOrigin="anonymous"
-                                    onError={() => setError('无法连接到远程摄像头流')}
+                                    onError={() => {
+                                        if (!useDirectStreamPreview && directStreamUrl) {
+                                            setUseDirectStreamPreview(true);
+                                            setError('代理连接失败，已自动切换到摄像头直连预览');
+                                            return;
+                                        }
+                                        setError('无法连接到远程摄像头流');
+                                    }}
                                 />
                             ) : (
                                 <div className="flex flex-col items-center justify-center h-full text-gray-500">

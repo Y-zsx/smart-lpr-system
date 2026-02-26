@@ -39,8 +39,23 @@ function parseBearerToken(authHeader?: string): string | null {
   return token;
 }
 
+function parseQueryToken(req: Request): string | null {
+  const token = req.query.token;
+  if (typeof token === 'string' && token.trim()) {
+    return token.trim();
+  }
+  return null;
+}
+
+function resolveToken(req: Request): string | null {
+  const bearer = parseBearerToken(req.headers.authorization);
+  if (bearer) return bearer;
+  // 兼容 <img>/<video> 无法携带 Authorization 头的场景
+  return parseQueryToken(req);
+}
+
 export async function requireAuth(req: AuthenticatedRequest, _res: Response, next: NextFunction) {
-  const token = parseBearerToken(req.headers.authorization);
+  const token = resolveToken(req);
   if (!token) {
     next(new AppError('Unauthorized: missing token', 401, 'UNAUTHORIZED'));
     return;

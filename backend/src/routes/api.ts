@@ -9,6 +9,9 @@ import * as UploadController from '../modules/monitor/UploadController';
 import * as BlacklistController from '../modules/alarms/BlacklistController';
 import * as AlarmController from '../modules/alarms/AlarmController';
 import * as CameraController from '../modules/monitor/CameraController';
+import * as StreamController from '../modules/monitor/StreamController';
+import * as StreamToolsController from '../modules/monitor/StreamToolsController';
+import * as OnvifController from '../modules/monitor/OnvifController';
 import * as AuthController from '../modules/auth/controller';
 import * as IamController from '../modules/iam/controller';
 import { applyDataScope, requireAuth, requirePermission } from '../modules/auth';
@@ -94,5 +97,9 @@ router.get('/cameras', requireAuth, requirePermission('monitor.view'), applyData
 router.post('/cameras', requireAuth, requirePermission('camera.manage'), CameraController.addCamera);
 router.put('/cameras/:id', requireAuth, requirePermission('camera.manage'), CameraController.updateCamera);
 router.delete('/cameras', requireAuth, requirePermission('camera.manage'), CameraController.deleteCamera);
+router.get('/cameras/:id/live', requireAuth, requirePermission('monitor.view'), applyDataScope(), StreamController.streamCameraLive);
+router.post('/cameras/stream-template', requireAuth, requirePermission('camera.manage'), StreamToolsController.buildStreamTemplate);
+router.post('/cameras/test-stream', requireAuth, requirePermission('camera.manage'), StreamToolsController.testStreamConnection);
+router.post('/cameras/onvif-discover', requireAuth, requirePermission('camera.manage'), OnvifController.discoverOnvif);
 
 export default router;

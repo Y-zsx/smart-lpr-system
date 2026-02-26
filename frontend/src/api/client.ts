@@ -1,15 +1,57 @@
 const runtimeOrigin = typeof window !== 'undefined' ? window.location.origin : '';
 const isLocalRuntime = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(runtimeOrigin);
-const BACKEND_URL = import.meta.env.VITE_API_BASE_URL || (isLocalRuntime ? 'http://localhost:8000' : runtimeOrigin);
+const CLOUD_BACKEND_URL = 'https://smartlpr.cloud';
+const LOCAL_BACKEND_URL = 'http://localhost:8000';
+const API_BASE_OVERRIDE_KEY = 'smart_lpr_api_base_override';
+const configuredBackendUrl = (import.meta.env.VITE_API_BASE_URL || '').trim();
 const TOKEN_KEY = 'smart_lpr_token';
 const DEFAULT_RETRY_TIMES = Math.max(0, Number(import.meta.env.VITE_API_RETRY_TIMES || 2));
 const DEFAULT_RETRY_BASE_MS = Math.max(50, Number(import.meta.env.VITE_API_RETRY_BASE_MS || 250));
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 504]);
 
 let authFailureHandler: (() => void) | null = null;
+let activeBackendUrl = resolveInitialBackendUrl();
 
 export function registerAuthFailureHandler(handler: (() => void) | null) {
     authFailureHandler = handler;
+}
+
+function normalizeBaseUrl(url?: string): string {
+    if (!url) return '';
+    return url.trim().replace(/\/+$/, '');
+}
+
+function getApiBaseOverride(): string {
+    if (typeof window === 'undefined') return '';
+    return normalizeBaseUrl(localStorage.getItem(API_BASE_OVERRIDE_KEY) || '');
+}
+
+function resolveInitialBackendUrl(): string {
+    const override = getApiBaseOverride();
+    if (override) return override;
+    if (configuredBackendUrl) return normalizeBaseUrl(configuredBackendUrl);
+    if (isLocalRuntime) return LOCAL_BACKEND_URL;
+    if (runtimeOrigin) return normalizeBaseUrl(runtimeOrigin);
+    return CLOUD_BACKEND_URL;
+}
+
+function getBackendCandidates(): string[] {
+    const candidates = new Set<string>();
+    const override = getApiBaseOverride();
+    if (override) candidates.add(override);
+    if (activeBackendUrl) candidates.add(activeBackendUrl);
+    if (configuredBackendUrl) candidates.add(normalizeBaseUrl(configuredBackendUrl));
+    if (isLocalRuntime) {
+        candidates.add(LOCAL_BACKEND_URL);
+    } else {
+        if (runtimeOrigin) candidates.add(normalizeBaseUrl(runtimeOrigin));
+        candidates.add(CLOUD_BACKEND_URL);
+    }
+    return Array.from(candidates).filter(Boolean);
+}
+
+function buildApiUrl(baseUrl: string, endpoint: string): string {
+    return `${normalizeBaseUrl(baseUrl)}${endpoint}`;
 }
 
 type ApiErrorPayload = {
@@ -62,6 +104,19 @@ export interface AuthSnapshot {
     dataScope: DataScope;
 }
 
+export type StreamVendor = 'hikvision' | 'dahua' | 'uniview' | 'axis' | 'custom';
+export type StreamProtocol = 'rtsp' | 'http';
+export interface OnvifDiscoveredDevice {
+    endpoint: string;
+    xaddrs: string[];
+    scopes: string[];
+    types: string[];
+    ip?: string;
+    name?: string;
+    location?: string;
+    vendorGuess: StreamVendor;
+}
+
 type RequestOptions = RequestInit & {
     retryTimes?: number;
     retryBaseMs?: number;
@@ -106,65 +161,89 @@ function shouldRetry(status: number | null, error: unknown, attempt: number, ret
 }
 
 async function request<T = any>(endpoint: string, options?: RequestOptions): Promise<T> {
-    const url = endpoint.startsWith('http') ? endpoint : `${BACKEND_URL}${endpoint}`;
     const retryTimes = options?.retryTimes ?? DEFAULT_RETRY_TIMES;
     const retryBaseMs = options?.retryBaseMs ?? DEFAULT_RETRY_BASE_MS;
-    let lastError: unknown;
+    const requestWithRetry = async (url: string): Promise<T> => {
+        let lastError: unknown;
+        for (let attempt = 0; attempt <= retryTimes; attempt++) {
+            try {
+                const res = await fetch(url, {
+                    ...options,
+                    headers: await buildHeaders(options)
+                });
 
-    for (let attempt = 0; attempt <= retryTimes; attempt++) {
-        try {
-            const res = await fetch(url, {
-                ...options,
-                headers: await buildHeaders(options)
-            });
-
-            if (!res.ok) {
-                let payload: ApiErrorPayload | null = null;
-                try {
-                    payload = await res.json();
-                } catch (_err) {
-                    payload = null;
-                }
-
-                if (res.status === 401) {
-                    clearStoredToken();
-                    if (!options?.skipAuthFailureHandler && authFailureHandler) {
-                        authFailureHandler();
+                if (!res.ok) {
+                    let payload: ApiErrorPayload | null = null;
+                    try {
+                        payload = await res.json();
+                    } catch (_err) {
+                        payload = null;
                     }
-                    throw new ApiRequestError(payload?.message || '登录状态已过期，请重新登录', {
-                        status: 401,
+
+                    if (res.status === 401) {
+                        clearStoredToken();
+                        if (!options?.skipAuthFailureHandler && authFailureHandler) {
+                            authFailureHandler();
+                        }
+                        throw new ApiRequestError(payload?.message || '登录状态已过期，请重新登录', {
+                            status: 401,
+                            code: payload?.code,
+                            details: payload?.details
+                        });
+                    }
+
+                    const message = payload?.message || `请求失败 (${res.status})`;
+                    const httpError = new ApiRequestError(message, {
+                        status: res.status,
                         code: payload?.code,
                         details: payload?.details
                     });
+                    if (!shouldRetry(res.status, httpError, attempt, retryTimes)) {
+                        throw httpError;
+                    }
+                    await sleep(retryBaseMs * Math.pow(2, attempt));
+                    continue;
                 }
 
-                const message = payload?.message || `请求失败 (${res.status})`;
-                const httpError = new ApiRequestError(message, {
-                    status: res.status,
-                    code: payload?.code,
-                    details: payload?.details
-                });
-                if (!shouldRetry(res.status, httpError, attempt, retryTimes)) {
-                    throw httpError;
+                const contentType = res.headers.get('content-type') || '';
+                if (contentType.includes('application/json')) {
+                    return res.json();
+                }
+                return (res.blob() as unknown) as T;
+            } catch (error) {
+                lastError = error;
+                const status = getApiErrorStatus(error) ?? null;
+                if (!shouldRetry(status, error, attempt, retryTimes)) {
+                    throw error;
                 }
                 await sleep(retryBaseMs * Math.pow(2, attempt));
-                continue;
             }
+        }
+        throw lastError instanceof Error ? lastError : new Error('请求失败');
+    };
 
-            const contentType = res.headers.get('content-type') || '';
-            if (contentType.includes('application/json')) {
-                return res.json();
-            }
-            return (res.blob() as unknown) as T;
+    if (endpoint.startsWith('http')) {
+        return requestWithRetry(endpoint);
+    }
+
+    const candidates = getBackendCandidates();
+    let lastError: unknown;
+    for (const base of candidates) {
+        const url = buildApiUrl(base, endpoint);
+        try {
+            const result = await requestWithRetry(url);
+            activeBackendUrl = base;
+            return result;
         } catch (error) {
             lastError = error;
-            const status = getApiErrorStatus(error) ?? null;
-            if (!shouldRetry(status, error, attempt, retryTimes)) {
+            const status = getApiErrorStatus(error);
+            // 认证/参数错误不做跨后端重试，避免误导用户
+            if (typeof status === 'number' && status >= 400 && status < 500 && status !== 408 && status !== 429) {
                 throw error;
             }
-            await sleep(retryBaseMs * Math.pow(2, attempt));
         }
     }
+
     throw lastError instanceof Error ? lastError : new Error('请求失败');
 }
 
@@ -340,8 +419,51 @@ export const apiClient = {
         });
     },
 
+    getCameraLiveStreamUrl(id: string) {
+        const token = getStoredToken();
+        const search = new URLSearchParams();
+        if (token) {
+            search.set('token', token);
+        }
+        const query = search.toString();
+        const base = normalizeBaseUrl(activeBackendUrl || resolveInitialBackendUrl());
+        return `${base}/api/cameras/${encodeURIComponent(id)}/live${query ? `?${query}` : ''}`;
+    },
+
+    async buildCameraStreamTemplate(payload: {
+        vendor: StreamVendor;
+        protocol: StreamProtocol;
+        host?: string;
+        port?: number;
+        username?: string;
+        password?: string;
+        channel?: number;
+        streamType?: 'main' | 'sub';
+        customPath?: string;
+    }) {
+        return request<{ url: string; tips: string[] }>('/api/cameras/stream-template', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+    },
+
+    async testCameraStream(url: string) {
+        return request<{ ok: boolean; message: string; details?: any }>('/api/cameras/test-stream', {
+            method: 'POST',
+            body: JSON.stringify({ url })
+        });
+    },
+
+    async discoverOnvifDevices(timeoutMs = 3500) {
+        return request<{ devices: OnvifDiscoveredDevice[]; elapsedMs: number; tips: string[] }>('/api/cameras/onvif-discover', {
+            method: 'POST',
+            body: JSON.stringify({ timeoutMs })
+        });
+    },
+
     async fetch(endpoint: string, options?: RequestInit) {
-        const url = endpoint.startsWith('http') ? endpoint : `${BACKEND_URL}${endpoint}`;
+        const base = normalizeBaseUrl(activeBackendUrl || resolveInitialBackendUrl());
+        const url = endpoint.startsWith('http') ? endpoint : `${base}${endpoint}`;
         return fetch(url, {
             ...options,
             headers: {
@@ -352,7 +474,23 @@ export const apiClient = {
     },
 
     getBackendUrl() {
-        return BACKEND_URL;
+        return normalizeBaseUrl(activeBackendUrl || resolveInitialBackendUrl());
+    },
+
+    setBackendUrlOverride(baseUrl: string) {
+        const normalized = normalizeBaseUrl(baseUrl);
+        if (!normalized) return;
+        if (typeof window !== 'undefined') {
+            localStorage.setItem(API_BASE_OVERRIDE_KEY, normalized);
+        }
+        activeBackendUrl = normalized;
+    },
+
+    clearBackendUrlOverride() {
+        if (typeof window !== 'undefined') {
+            localStorage.removeItem(API_BASE_OVERRIDE_KEY);
+        }
+        activeBackendUrl = resolveInitialBackendUrl();
     },
 
     getToken() {
@@ -362,13 +500,14 @@ export const apiClient = {
     getImageUrl(path?: string): string {
         if (!path) return 'https://via.placeholder.com/400x300?text=No+Image';
         if (path.startsWith('http://') || path.startsWith('https://')) return path;
+        const base = normalizeBaseUrl(activeBackendUrl || resolveInitialBackendUrl());
         if (path.startsWith('uploads/')) {
-            return `${BACKEND_URL}/${path}`;
+            return `${base}/${path}`;
         }
         if (path.startsWith('data:') || path.startsWith('blob:')) {
             return path;
         }
-        return `${BACKEND_URL}/${path}`;
+        return `${base}/${path}`;
     },
 
     async getIamUsers() {

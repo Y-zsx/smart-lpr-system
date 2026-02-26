@@ -7,9 +7,10 @@
 
 ## 网络摄像头（IP / RTSP）
 
-- 支持 MJPEG：`http://IP:端口/stream` 或 `.../video.mjpg`；HLS：`http://IP:端口/stream.m3u8`。
-- RTSP 需先转 HTTP：可用 FFmpeg 转 HLS 或 Node Media Server 转 HTTP-FLV。
+- 当前版本已内置后端流代理：统一接收 RTSP/HLS/HTTP 流，并由后端转成浏览器可播放的 MJPEG。
+- 生产环境请确保后端机器已安装 `ffmpeg`（命令行可执行 `ffmpeg -version`）。
 - 添加：列表「+」→ 网络流 → 填名称与流地址。常见格式示例：海康 `http://用户:密码@IP:端口/Streaming/channels/1/picture`；通用 MJPEG `http://IP:端口/video.mjpg`。
+- 已提供“智能接入助手 + 连通测试”：可按厂商（海康/大华/宇视/Axis）自动生成常见 RTSP 地址并直接测试可用性。
 
 ## 视频文件（演示）
 

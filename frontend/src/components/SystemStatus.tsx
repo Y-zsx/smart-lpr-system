@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Activity, Cloud, Server, Maximize, Minimize } from 'lucide-react';
+import { apiClient } from '@/api/client';
 
 export const SystemStatus: React.FC = () => {
     const [aiStatus, setAiStatus] = useState<'online' | 'offline' | 'checking'>('checking');
@@ -8,8 +9,8 @@ export const SystemStatus: React.FC = () => {
 
     const checkHealth = async () => {
         try {
-            // Use same-origin health endpoint via Nginx proxy to avoid cross-origin issues.
-            const res = await fetch('/api/health');
+            const backend = apiClient.getBackendUrl();
+            const res = await fetch(`${backend}/api/health`);
             const payload = await res.json().catch(() => null);
             const aiOnline = Boolean(payload?.checks?.aiService);
             const cloudOnline = Boolean(payload?.service === 'backend') || res.ok;
