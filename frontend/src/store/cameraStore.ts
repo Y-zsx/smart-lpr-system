@@ -28,21 +28,23 @@ interface CameraStore {
     selectCamera: (id: string) => void;
     updateCameraStatus: (id: string, status: 'online' | 'offline') => void;
     setLocalBlobUrl: (cameraId: string, blobUrl: string) => void;
+    /** 从服务端拉取摄像头列表并写入 store，多设备同步以服务端为准 */
+    setCamerasFromServer: (serverCameras: CameraDevice[]) => void;
     refreshDevices: () => Promise<void>;
 }
+
+const LOCAL_DEFAULT_CAMERA: CameraDevice = {
+    id: 'local-default',
+    name: '本机摄像头',
+    type: 'local',
+    status: 'offline',
+    lastActive: Date.now()
+};
 
 export const useCameraStore = create<CameraStore>()(
     persist(
         (set, get) => ({
-            cameras: [
-                {
-                    id: 'local-default',
-                    name: '本机摄像头',
-                    type: 'local',
-                    status: 'offline',
-                    lastActive: Date.now()
-                }
-            ],
+            cameras: [LOCAL_DEFAULT_CAMERA],
             selectedCameraId: 'local-default',
             availableDevices: [],
             localBlobUrls: {},
@@ -86,6 +88,16 @@ export const useCameraStore = create<CameraStore>()(
                 const prev = state.localBlobUrls[cameraId];
                 if (prev && prev !== blobUrl) try { URL.revokeObjectURL(prev); } catch (_) {}
                 return { localBlobUrls: { ...state.localBlobUrls, [cameraId]: blobUrl } };
+            }),
+
+            setCamerasFromServer: (serverCameras) => set((state) => {
+                const list = Array.isArray(serverCameras) ? serverCameras : [];
+                const merged = [LOCAL_DEFAULT_CAMERA, ...list.filter(c => c.id !== LOCAL_DEFAULT_CAMERA.id)];
+                const keepSelected = merged.some(c => c.id === state.selectedCameraId);
+                return {
+                    cameras: merged,
+                    selectedCameraId: keepSelected ? state.selectedCameraId : (merged[0]?.id ?? 'local-default')
+                };
             }),
 
             selectCamera: (id) => set({ selectedCameraId: id }),

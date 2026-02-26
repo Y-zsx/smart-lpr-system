@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CameraView } from '@/components/CameraView';
 import { MultiCameraView } from '@/components/MultiCameraView';
 import { CameraList } from '@/components/CameraList';
 import { CameraMap } from '@/components/CameraMap';
 import { FileUpload } from '@/components/FileUpload';
 import { Camera, Upload, Map, List, Grid } from 'lucide-react';
+import { useCameraStore } from '@/store/cameraStore';
+import { apiClient } from '@/api/client';
 
 interface LiveMonitorPageProps {
     canManageCamera?: boolean;
@@ -13,6 +15,28 @@ interface LiveMonitorPageProps {
 export const LiveMonitorPage: React.FC<LiveMonitorPageProps> = ({ canManageCamera = true }) => {
     const [mode, setMode] = useState<'camera' | 'upload' | 'multi'>('camera');
     const [rightView, setRightView] = useState<'list' | 'map'>('list');
+    const setCamerasFromServer = useCameraStore((s) => s.setCamerasFromServer);
+
+    useEffect(() => {
+        apiClient.getCameras()
+            .then((list: any) => {
+                const arr = Array.isArray(list) ? list : [];
+                setCamerasFromServer(arr.map((c: any) => ({
+                    id: c.id,
+                    name: c.name,
+                    type: c.type || 'stream',
+                    url: c.url,
+                    deviceId: c.deviceId,
+                    status: c.status || 'offline',
+                    lastActive: c.lastActive,
+                    location: c.location,
+                    regionCode: c.regionCode,
+                    latitude: c.latitude,
+                    longitude: c.longitude
+                })));
+            })
+            .catch(() => {});
+    }, [setCamerasFromServer]);
 
     return (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6 min-h-[calc(100dvh-8.5rem)] lg:h-[calc(100dvh-8.5rem)]">

@@ -211,15 +211,16 @@ export const recognizePlate = async (req: Request, res: Response, next: NextFunc
                 throw lastError || new Error('AI recognition request failed');
             }
 
-            if (aiResponse.data.error) {
-                console.error('AI Service returned error:', aiResponse.data.error);
+            const data = aiResponse.data;
+            if (data && typeof data === 'object' && data.error) {
+                console.error('AI Service returned error:', data.error);
                 next(new AppError('AI recognition error', 502, 'AI_RECOGNITION_ERROR', {
-                    reason: aiResponse.data.error
+                    reason: data.error
                 }));
                 return;
             }
 
-            const aiPlates = aiResponse.data.plates || [];
+            const aiPlates = Array.isArray(data?.plates) ? data.plates : [];
             let persistedImageUrl = `uploads/temp/${file.filename}`;
             if (aiPlates.length > 0 && file?.path) {
                 try {
@@ -282,7 +283,10 @@ export const recognizePlate = async (req: Request, res: Response, next: NextFunc
         }
     } catch (error) {
         console.error('Recognition error:', error);
-        next(new AppError('Error recognizing plate', 500, 'PLATE_RECOGNIZE_FAILED'));
+        const message = error instanceof Error ? error.message : 'Error recognizing plate';
+        next(new AppError('识别服务异常，请稍后重试', 500, 'PLATE_RECOGNIZE_FAILED', {
+            reason: process.env.NODE_ENV === 'production' ? undefined : message
+        }));
     } finally {
         console.info('[AI] recognize request done', JSON.stringify({ elapsedMs: Date.now() - requestStartedAt }));
         if (file?.path && shouldCleanupTempFile) {

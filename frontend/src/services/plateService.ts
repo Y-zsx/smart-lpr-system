@@ -61,7 +61,12 @@ export const plateService = {
             });
 
             if (!res.ok) {
-                throw new Error(`识别失败: ${res.statusText}`);
+                let msg = res.statusText;
+                try {
+                    const body = await res.json();
+                    if (body && typeof body.message === 'string') msg = body.message;
+                } catch (_) {}
+                throw new Error(msg ? `识别失败: ${msg}` : '识别失败');
             }
 
             const data = await res.json();
