@@ -2,6 +2,9 @@ import React, { useEffect, useRef, useState } from 'react';
 import { MapPin, Search, X } from 'lucide-react';
 import { useToastContext } from '../contexts/ToastContext';
 
+const SEARCH_DEBOUNCE_MS = 380;
+const DEFAULT_CENTER: [number, number] = [116.397428, 39.90923];
+
 interface LocationPickerProps {
     value?: {
         address: string;
@@ -54,12 +57,12 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange,
             try {
                 setIsLoading(true);
 
-                // 初始化地图
+                // 初始中心：有传入位置用传入的，否则先用默认，等定位成功再移动
                 const map = new window.AMap.Map(mapContainerRef.current, {
                     zoom: 15,
-                    center: value ? [value.lng, value.lat] : [116.397428, 39.90923], // 默认北京
+                    center: value ? [value.lng, value.lat] : DEFAULT_CENTER,
                     mapStyle: 'amap://styles/normal',
-                    viewMode: '3D' // 使用3D视图
+                    viewMode: '3D'
                 });
 
                 mapInstanceRef.current = map;
@@ -67,27 +70,19 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange,
                 // 等待地图加载完成
                 map.on('complete', () => {
                     console.log('地图加载完成');
-                    
-                    // 使用插件系统加载 Geocoder 和 PlaceSearch
+
                     window.AMap.plugin(['AMap.Geocoder', 'AMap.PlaceSearch'], () => {
-                        console.log('插件加载完成');
-                        
-                        // 初始化地理编码
                         geocoderRef.current = new window.AMap.Geocoder();
-                        
-                        // 初始化地点搜索
                         placeSearchRef.current = new window.AMap.PlaceSearch({
                             city: '全国',
                             citylimit: false,
                             pageSize: 10,
                             pageIndex: 1,
                             extensions: 'all',
-                            // 添加错误处理
                             map: map,
-                            panel: undefined // 不使用默认面板，我们自己处理结果
+                            panel: undefined
                         });
 
-                        // 创建标记
                         if (value) {
                             const marker = new window.AMap.Marker({
                                 position: [value.lng, value.lat],
@@ -95,28 +90,36 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange,
                             });
                             marker.setMap(map);
                             markerRef.current = marker;
-
-                            // 标记拖拽事件
                             marker.on('dragend', () => {
                                 const position = marker.getPosition();
                                 reverseGeocode(position.lng, position.lat);
                             });
                         } else {
-                            // 创建可拖拽标记（不自动选择位置，等待用户操作）
                             const marker = new window.AMap.Marker({
                                 position: map.getCenter(),
                                 draggable: true
                             });
                             marker.setMap(map);
                             markerRef.current = marker;
-
-                            // 标记拖拽事件
                             marker.on('dragend', () => {
                                 const position = marker.getPosition();
                                 reverseGeocode(position.lng, position.lat);
                             });
-                            
-                            // 不自动调用逆地理编码，等待用户点击地图或拖拽标记
+                            // 无传入位置时，尝试用当前设备位置作为初始中心
+                            if (navigator.geolocation) {
+                                navigator.geolocation.getCurrentPosition(
+                                    (pos) => {
+                                        const lng = pos.coords.longitude;
+                                        const lat = pos.coords.latitude;
+                                        map.setCenter([lng, lat]);
+                                        map.setZoom(15);
+                                        if (markerRef.current) markerRef.current.setPosition([lng, lat]);
+                                        reverseGeocode(lng, lat);
+                                    },
+                                    () => {},
+                                    { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+                                );
+                            }
                         }
 
                         // 地图点击事件
@@ -230,6 +233,19 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange,
             }
         }
     }, [value]);
+
+    // 边输入边搜索：防抖后自动触发，与点击搜索一致
+    useEffect(() => {
+        const trimmed = searchKeyword.trim();
+        if (!trimmed) {
+            setSearchResults([]);
+            return;
+        }
+        const t = setTimeout(() => {
+            handleSearch();
+        }, SEARCH_DEBOUNCE_MS);
+        return () => clearTimeout(t);
+    }, [searchKeyword]);
 
     // 逆地理编码：根据经纬度获取地址
     const reverseGeocode = (lng: number, lat: number) => {
@@ -408,7 +424,7 @@ export const LocationPicker: React.FC<LocationPickerProps> = ({ value, onChange,
                                 placeholder="搜索地点..."
                                 value={searchKeyword}
                                 onChange={(e) => setSearchKeyword(e.target.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                                 className="w-full pl-10 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
                             />
                         </div>
