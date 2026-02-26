@@ -693,8 +693,25 @@ server {
         add_header Cache-Control "no-cache";
     }
 
+    # 视频上传接口：需要更大 body 和更长超时（避免 413 Content Too Large）
+    location /api/media/upload-video {
+        client_max_body_size 512M;
+        proxy_pass http://localhost:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 600s;
+        proxy_read_timeout 600s;
+        proxy_request_buffering off;
+        proxy_buffering off;
+    }
+
     # API 代理
     location /api {
+        client_max_body_size 20M;
         proxy_pass http://localhost:8000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -718,9 +735,11 @@ server {
         add_header Cache-Control "public, immutable";
     }
 
-    # 文件上传大小限制
-    client_max_body_size 10M;
+    # 默认请求体限制（普通接口）。视频上传单独用上面 location /api/media/upload-video 的 512M
+    client_max_body_size 20M;
 }
+# 说明：此前用 10M 是常见做法，用于限制普通接口请求体、防止滥用；视频需单独放大故单独配置。
+# 前端逻辑：视频仅在用户点击「添加」或「保存」后才上传，未确认不会落盘，避免产生无法删除的孤儿文件。
 
 # HTTPS 配置（配置 SSL 证书后使用）
 # server {
@@ -906,6 +925,21 @@ curl -s http://localhost:8000/api/health
 ```
 
 优先排查项：Nginx 反向代理、`CORS_ORIGIN`、前端 `VITE_API_BASE_URL`。
+
+### 4. 视频上传返回 413 Content Too Large
+
+原因：Nginx 对请求体有默认上限（常见为 10M），用于限制普通接口、防止滥用；视频体积大，超过该限制会被直接拒绝。
+
+处理：按本文档「Nginx 反向代理配置（完整版）」更新配置，确保：
+
+- 为 `/api/media/upload-video` 单独配置 `client_max_body_size 512M` 和更长超时（如 `proxy_send_timeout 600s`）。
+- 通用 API 的 `client_max_body_size` 建议不小于 20M。
+
+修改后执行：
+
+```bash
+sudo nginx -t && sudo systemctl reload nginx
+```
 
 ---
 

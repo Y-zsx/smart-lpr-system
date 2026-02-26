@@ -50,6 +50,8 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
     const [onvifDevices, setOnvifDevices] = useState<OnvifDiscoveredDevice[]>([]);
     const [uploadingVideoFor, setUploadingVideoFor] = useState<'add' | 'edit' | null>(null);
     const [uploadingVideoName, setUploadingVideoName] = useState<string>('');
+    /** 已选择但尚未上传的视频文件（点击添加/保存时才上传，避免未确认就落盘造成孤儿文件） */
+    const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
 
     // 移除自动刷新设备列表，避免自动请求摄像头权限
     // 用户需要时可以手动点击刷新按钮
@@ -67,17 +69,35 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
             toast.warning('请输入流地址');
             return;
         }
-        if (addType === 'file' && !newCam.url) {
-            toast.warning('请选择视频文件');
-            return;
+        if (addType === 'file') {
+            if (!selectedVideoFile) {
+                toast.warning('请选择视频文件');
+                return;
+            }
         }
         
         try {
+            let urlToUse = newCam.url;
+            if (addType === 'file' && selectedVideoFile) {
+                setUploadingVideoFor('add');
+                setUploadingVideoName(selectedVideoFile.name);
+                try {
+                    const uploaded = await apiClient.uploadVideoMedia(selectedVideoFile);
+                    urlToUse = uploaded.path;
+                } finally {
+                    setUploadingVideoFor(null);
+                    setUploadingVideoName('');
+                }
+            }
+            if (addType === 'file' && !urlToUse) {
+                toast.warning('视频上传失败，请重试');
+                return;
+            }
             // 先调用 API 添加到后端
             const savedCamera = await apiClient.addCamera({
                 name: newCam.name,
                 type: addType,
-                url: newCam.url,
+                url: urlToUse ?? newCam.url,
                 regionCode: newCam.regionCode || undefined,
                 location: newCam.location?.address,
                 latitude: newCam.location?.lat,
@@ -90,6 +110,7 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
             setIsAdding(false);
             setNewCam({ name: '', url: '', type: 'stream', regionCode: '', location: undefined });
             setAddType('stream');
+            setSelectedVideoFile(null);
             toast.success('摄像头添加成功');
         } catch (error) {
             console.error('添加摄像头失败:', error);
@@ -97,30 +118,21 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
         }
     };
 
-    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        const target: 'add' | 'edit' = editingCamera ? 'edit' : 'add';
-        try {
-            setUploadingVideoFor(target);
-            setUploadingVideoName(file.name);
-            const uploaded = await apiClient.uploadVideoMedia(file);
-            if (target === 'add') {
-                setNewCam((prev) => ({ ...prev, url: uploaded.path, name: prev.name || file.name }));
-            } else {
-                setEditCam((prev) => ({ ...prev, url: uploaded.path, name: prev.name || file.name }));
-            }
-            toast.success('视频已保存');
-        } catch (error) {
-            console.error('视频上传失败:', error);
-            toast.error(error instanceof Error ? error.message : '视频上传失败');
-        } finally {
-            setUploadingVideoFor(null);
-            setUploadingVideoName('');
+        setSelectedVideoFile(file);
+        if (!editingCamera) {
+            setNewCam((prev) => ({ ...prev, name: prev.name || file.name.replace(/\.[^.]+$/, '') }));
+        } else {
+            setEditCam((prev) => ({ ...prev, name: prev.name || file.name.replace(/\.[^.]+$/, '') }));
         }
+        toast.info('已选择视频，点击添加/保存后会上传');
+        e.target.value = '';
     };
 
     const handleEdit = (camera: CameraDevice) => {
+        setSelectedVideoFile(null);
         setEditingCamera(camera);
         setEditCam({
             name: camera.name,
@@ -151,17 +163,29 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
             toast.warning('请输入流地址');
             return;
         }
-        if (addType === 'file' && !editCam.url) {
+        if (addType === 'file' && !editCam.url && !selectedVideoFile) {
             toast.warning('请选择视频文件');
             return;
         }
 
         try {
+            let urlToUse = editCam.url;
+            if (addType === 'file' && selectedVideoFile) {
+                setUploadingVideoFor('edit');
+                setUploadingVideoName(selectedVideoFile.name);
+                try {
+                    const uploaded = await apiClient.uploadVideoMedia(selectedVideoFile);
+                    urlToUse = uploaded.path;
+                } finally {
+                    setUploadingVideoFor(null);
+                    setUploadingVideoName('');
+                }
+            }
             // 更新到后端
             await apiClient.updateCamera(editingCamera.id, {
                 name: editCam.name,
                 type: addType,
-                url: editCam.url,
+                url: urlToUse,
                 regionCode: editCam.regionCode || undefined,
                 location: editCam.location?.address,
                 latitude: editCam.location?.lat,
@@ -172,7 +196,7 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
             updateCamera(editingCamera.id, {
                 name: editCam.name,
                 type: addType,
-                url: editCam.url,
+                url: urlToUse,
                 regionCode: editCam.regionCode || undefined,
                 location: editCam.location?.address,
                 latitude: editCam.location?.lat,
@@ -182,6 +206,7 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
             setEditingCamera(null);
             setEditCam({ name: '', url: '', type: 'stream', regionCode: '', location: undefined });
             setAddType('stream');
+            setSelectedVideoFile(null);
             toast.success('摄像头更新成功');
         } catch (error) {
             console.error('更新摄像头失败:', error);
@@ -288,7 +313,7 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                     </button>
                     {canManage && (
                         <button
-                            onClick={() => setIsAdding(true)}
+                            onClick={() => { setSelectedVideoFile(null); setIsAdding(true); }}
                             className="p-1.5 hover:bg-blue-50 text-blue-600 rounded-lg transition-colors"
                             title="添加摄像头"
                         >
@@ -575,17 +600,17 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                                     {uploadingVideoFor === 'add' && (
                                         <p className="text-xs text-blue-600 mt-1">上传中：{uploadingVideoName}</p>
                                     )}
-                                    {newCam.url && (
-                                        <p className="text-xs text-green-600 mt-1">✓ 文件已选择</p>
+                                    {selectedVideoFile && !uploadingVideoFor && (
+                                        <p className="text-xs text-green-600 mt-1">已选择：{selectedVideoFile.name}，点击添加后上传</p>
                                     )}
                                 </div>
                             )}
                             <div>
                                 <label className="text-xs text-gray-500 block mb-1">区域编码（可选）</label>
-                                <input
-                                    className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500"
-                                    placeholder="例如：zone-east"
-                                    value={newCam.regionCode}
+                                    <input
+                                        className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500"
+                                        placeholder="例如：zone-east"
+                                        value={newCam.regionCode}
                                     onChange={e => setNewCam({ ...newCam, regionCode: e.target.value })}
                                 />
                             </div>
@@ -627,6 +652,7 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                                         setIsAdding(false);
                                         setNewCam({ name: '', url: '', type: 'stream', regionCode: '', location: undefined });
                                         setAddType('stream');
+                                        setSelectedVideoFile(null);
                                     }}
                                     className="flex-1 px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200"
                                 >
@@ -755,8 +781,11 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                                     {uploadingVideoFor === 'edit' && (
                                         <p className="text-xs text-blue-600 mt-1">上传中：{uploadingVideoName}</p>
                                     )}
-                                    {editCam.url && (
-                                        <p className="text-xs text-green-600 mt-1">✓ 文件已选择</p>
+                                    {selectedVideoFile && !uploadingVideoFor && (
+                                        <p className="text-xs text-green-600 mt-1">已选择新文件：{selectedVideoFile.name}，点击保存后上传</p>
+                                    )}
+                                    {editCam.url && !selectedVideoFile && (
+                                        <p className="text-xs text-gray-500 mt-1">当前已关联视频</p>
                                     )}
                                 </div>
                             )}
@@ -807,6 +836,7 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                                         setEditingCamera(null);
                                         setEditCam({ name: '', url: '', type: 'stream', regionCode: '', location: undefined });
                                         setAddType('stream');
+                                        setSelectedVideoFile(null);
                                     }}
                                     className="flex-1 px-3 py-2 bg-gray-100 text-gray-600 rounded-lg text-sm font-medium hover:bg-gray-200"
                                 >
