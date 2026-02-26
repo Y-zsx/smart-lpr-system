@@ -29,6 +29,23 @@ interface PathPoint {
 const GEOCODE_CACHE_MAX = 300;
 const geocodeCache = new Map<string, { lng: number; lat: number }>();
 
+/** 按车牌缓存已构建的路径点，第二次打开同一车牌时直接展示，无需转圈重建 */
+const PATH_POINTS_CACHE_MAX = 20;
+const pathPointsCache = new Map<string, PathPoint[]>();
+
+function getCachedPathPoints(plate: string): PathPoint[] | null {
+    const cached = pathPointsCache.get(plate);
+    return cached && cached.length > 0 ? cached : null;
+}
+
+function setCachedPathPoints(plate: string, points: PathPoint[]) {
+    if (pathPointsCache.size >= PATH_POINTS_CACHE_MAX) {
+        const firstKey = pathPointsCache.keys().next().value;
+        if (firstKey !== undefined) pathPointsCache.delete(firstKey);
+    }
+    pathPointsCache.set(plate, points);
+}
+
 function getCachedGeocode(address: string): { lng: number; lat: number } | null {
     const key = address.trim();
     return geocodeCache.get(key) ?? null;
@@ -217,7 +234,30 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
         });
     }, [allCameras]);
 
-    // 处理告警数据，提取路径点：先清空再并行解析，全部完成后再去重、一次性设点，保证每次打开结果稳定
+    // 解析单条告警的坐标（仅同步/缓存逻辑，不发起地理编码）
+    const getLocationForAlarm = useCallback((alarm: Alarm): { lng: number; lat: number } | null => {
+        if (alarm.longitude !== undefined && alarm.latitude !== undefined) {
+            const lng = Number(alarm.longitude);
+            const lat = Number(alarm.latitude);
+            if (!isNaN(lng) && !isNaN(lat) && isFinite(lng) && isFinite(lat) &&
+                lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90) {
+                return { lng, lat };
+            }
+        }
+        if (alarm.camera_id && allCameras.length > 0) {
+            const cam = allCameras.find((c: { id?: string }) => String(c.id) === String(alarm.camera_id));
+            if (cam?.latitude != null && cam?.longitude != null) {
+                const lng = Number(cam.longitude);
+                const lat = Number(cam.latitude);
+                if (!isNaN(lng) && !isNaN(lat) && lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90) {
+                    return { lng, lat };
+                }
+            }
+        }
+        return null;
+    }, [allCameras]);
+
+    // 处理告警数据，提取路径点：同一地址只解析一次并按告警时间顺序产出，保证每次打开结果一致
     const processAlarms = useCallback(async () => {
         if (processingRef.current) return;
         processingRef.current = true;
@@ -225,7 +265,6 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
         setMapError(null);
 
         try {
-            // 有经纬度、或有关联摄像头、或有有效地址文案的告警才参与路径（优先用坐标，减少地址反查）
             const sortedAlarms = [...alarms]
                 .filter(alarm => {
                     if (alarm.latitude != null && alarm.longitude != null) return true;
@@ -243,55 +282,46 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
                 return;
             }
 
-            // 解析坐标优先级：1) 告警自带经纬度 2) 关联摄像头的经纬度 3) 地址地理编码（PlaceSearch + Geocoder 兜底）
-            const resolved = await Promise.all(
-                sortedAlarms.map(async (alarm): Promise<{ alarm: typeof alarm; location: { lng: number; lat: number } | null }> => {
-                    let location: { lng: number; lat: number } | null = null;
-                    if (alarm.longitude !== undefined && alarm.latitude !== undefined) {
-                        const lng = Number(alarm.longitude);
-                        const lat = Number(alarm.latitude);
-                        if (!isNaN(lng) && !isNaN(lat) && isFinite(lng) && isFinite(lat) &&
-                            lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90) {
-                            location = { lng, lat };
-                        }
-                    }
-                    if (!location && alarm.camera_id && allCameras.length > 0) {
-                        const cam = allCameras.find((c: { id?: string }) => String(c.id) === String(alarm.camera_id));
-                        if (cam?.latitude != null && cam?.longitude != null) {
-                            const lng = Number(cam.longitude);
-                            const lat = Number(cam.latitude);
-                            if (!isNaN(lng) && !isNaN(lat) && lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90) {
-                                location = { lng, lat };
-                            }
-                        }
-                    }
-                    if (!location && alarm.location) {
-                        const parsed = parseLocation(alarm.location).catch(() => null);
-                        location = await Promise.race([
-                            parsed,
-                            new Promise<null>(r => setTimeout(() => r(null), 8000))
-                        ]);
-                    }
-                    return { alarm, location };
-                })
-            );
+            // 1) 收集必须走地理编码的「唯一地址」，稳定排序，避免同一地址多次请求导致结果不一致
+            const addressesToResolve = new Set<string>();
+            for (const alarm of sortedAlarms) {
+                if (getLocationForAlarm(alarm)) continue;
+                if (alarm.location?.trim()) addressesToResolve.add(alarm.location.trim());
+            }
+            const sortedAddresses = [...addressesToResolve].sort();
 
+            // 2) 每个地址只解析一次，顺序固定，结果写入 map，便于后面按告警顺序取用
+            const addressToCoord = new Map<string, { lng: number; lat: number }>();
+            for (const addr of sortedAddresses) {
+                const parsed = parseLocation(addr).catch(() => null);
+                const coord = await Promise.race([
+                    parsed,
+                    new Promise<null>(r => setTimeout(() => r(null), 8000))
+                ]);
+                if (coord && !isNaN(coord.lng) && !isNaN(coord.lat)) {
+                    addressToCoord.set(addr, coord);
+                }
+            }
+
+            // 3) 按告警时间顺序，用「告警/摄像头坐标」或「上面解析出的地址坐标」组路径点
             const points: PathPoint[] = [];
-            for (const { alarm, location } of resolved) {
+            for (const alarm of sortedAlarms) {
+                let location = getLocationForAlarm(alarm);
+                if (!location && alarm.location?.trim()) {
+                    location = addressToCoord.get(alarm.location.trim()) ?? null;
+                }
                 if (!location) continue;
                 const lng = Number(location.lng);
                 const lat = Number(location.lat);
-                if (!isNaN(lng) && !isNaN(lat) && isFinite(lng) && isFinite(lat) &&
-                    lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90) {
-                    points.push({
-                        lng,
-                        lat,
-                        address: alarm.location || '未知位置',
-                        timestamp: alarm.timestamp,
-                        alarmId: alarm.id,
-                        severity: alarm.severity
-                    });
-                }
+                if (!isFinite(lng) || !isFinite(lat) || lng < -180 || lng > 180 || lat < -90 || lat > 90) continue;
+                points.push({
+                    lng,
+                    lat,
+                    address: alarm.location || '未知位置',
+                    timestamp: alarm.timestamp,
+                    alarmId: alarm.id,
+                    severity: alarm.severity
+                });
             }
 
             if (points.length === 0) {
@@ -302,11 +332,12 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
 
             const deduplicatedPoints = deduplicatePathPoints(points);
             setPathPoints(deduplicatedPoints);
+            setCachedPathPoints(plateNumber, deduplicatedPoints);
             setIsLoading(false);
         } finally {
             processingRef.current = false;
         }
-    }, [alarms, allCameras, parseLocation, deduplicatePathPoints]);
+    }, [plateNumber, alarms, getLocationForAlarm, parseLocation, deduplicatePathPoints]);
 
     // 加载摄像头列表（用于匹配位置）；完成后置位 camerasFetched，保证路径只构建一次且数据完整
     useEffect(() => {
@@ -338,8 +369,16 @@ export const AlarmPathReplay: React.FC<AlarmPathReplayProps> = ({ plateNumber, a
         processAlarmsRef.current = processAlarms;
     }, [processAlarms]);
 
-    // 切换车牌或首次打开：清空旧结果、允许重新构建，避免沿用上一次的 0 点或错误提示
+    // 切换车牌或首次打开：有缓存则直接展示不转圈，无缓存再清空并等待构建
     useEffect(() => {
+        const cached = getCachedPathPoints(plateNumber);
+        if (cached) {
+            setPathPoints(cached);
+            setMapError(null);
+            setIsLoading(false);
+            pathBuiltForSessionRef.current = true;
+            return;
+        }
         pathBuiltForSessionRef.current = false;
         setPathPoints([]);
         setMapError(null);
