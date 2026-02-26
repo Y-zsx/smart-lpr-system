@@ -47,7 +47,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     // 多窗口模式：每个窗口有独立的扫描状态
     const [localScanning, setLocalScanning] = useState(false);
     const { isScanning: globalScanning, setScanning: setGlobalScanning, addPlate, settings } = usePlateStore();
-    const { cameras, selectedCameraId, updateCameraStatus } = useCameraStore();
+    const { cameras, selectedCameraId, updateCameraStatus, localBlobUrls } = useCameraStore();
 
     // 如果提供了 propCameraId，使用它；否则使用选中的摄像头
     const effectiveCameraId = propCameraId || selectedCameraId;
@@ -61,7 +61,10 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     const streamPreviewUrl = isStream
         ? (useDirectStreamPreview ? directStreamUrl : (proxyStreamUrl || directStreamUrl))
         : '';
-    const fileVideoUrl = isFile ? apiClient.getMediaUrl(currentCamera?.url) : '';
+    // 本会话内优先用本地 blob 播放，避免从服务器拉流导致卡顿；无 blob 时回退到线上 URL
+    const fileVideoUrl = isFile
+        ? (effectiveCameraId && localBlobUrls[effectiveCameraId]) || apiClient.getMediaUrl(currentCamera?.url) || ''
+        : '';
 
     // 使用独立扫描状态或全局扫描状态
     const isScanning = independentScanning ? localScanning : globalScanning;
@@ -875,38 +878,16 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                         return (
                             <div className={`absolute bottom-24 left-1/2 transform -translate-x-1/2 z-30 pointer-events-auto animate-in slide-in-from-bottom-5 duration-300 px-2 sm:px-0 ${isAnyBlacklisted ? 'w-full max-w-md' : 'w-full max-w-sm'
                                 }`}>
-                                <div className={`rounded-xl shadow-2xl border-2 overflow-hidden ${isAnyBlacklisted ? 'bg-red-50 border-red-500' : 'bg-white border-blue-200'
+                                <div className={`rounded-xl shadow-2xl border-2 overflow-hidden overflow-y-auto max-h-[85vh] flex flex-col ${isAnyBlacklisted ? 'bg-red-50 border-red-500' : 'bg-white border-blue-200'
                                     }`}>
                                     {isAnyBlacklisted && (
-                                        <div className="bg-red-600 text-white px-4 py-2 flex items-center gap-2">
+                                        <div className="bg-red-600 text-white px-4 py-2 flex items-center gap-2 shrink-0">
                                             <ShieldAlert size={18} className="animate-pulse" />
                                             <span className="font-bold">⚠️ 黑名单车辆告警</span>
                                         </div>
                                     )}
-                                    {showSnapshot && (
-                                        <div className="relative w-full bg-black" style={{ maxHeight: 'min(40vh, 280px)' }}>
-                                            <img
-                                                src={snap!.url}
-                                                alt="识别帧"
-                                                className="w-full h-auto object-contain block"
-                                            />
-                                            {snap!.rect && snap!.captureWidth > 0 && (
-                                                <div
-                                                    className="absolute border-2 border-green-400 bg-green-400/20 pointer-events-none"
-                                                    style={{
-                                                        left: `${(snap!.rect.x / snap!.captureWidth) * 100}%`,
-                                                        top: `${(snap!.rect.y / snap!.captureHeight) * 100}%`,
-                                                        width: `${(snap!.rect.w / snap!.captureWidth) * 100}%`,
-                                                        height: `${(snap!.rect.h / snap!.captureHeight) * 100}%`
-                                                    }}
-                                                />
-                                            )}
-                                            <div className="absolute bottom-1 left-1 right-1 text-right">
-                                                <span className="text-[10px] text-white/80 bg-black/50 px-1.5 py-0.5 rounded">与发送帧同步</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div className="p-4">
+                                    {/* 移动端结果在上、图片在下，避免只看到图看不到结果；桌面端保持图在上 */}
+                                    <div className="p-4 shrink-0 order-1 sm:order-2">
                                         <div className="flex items-center justify-between mb-3">
                                             <div className="flex flex-wrap items-center gap-2">
                                                 {plates.map((p) => (
@@ -954,6 +935,26 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                                             {new Date(plates[0].timestamp).toLocaleString('zh-CN')}
                                         </div>
                                     </div>
+                                    {showSnapshot && (
+                                        <div className="relative w-full bg-black shrink-0 order-2 sm:order-1 max-h-[28vh] sm:max-h-[min(40vh,280px)]">
+                                            <img
+                                                src={snap!.url}
+                                                alt="识别帧"
+                                                className="w-full h-auto object-contain block"
+                                            />
+                                            {snap!.rect && snap!.captureWidth > 0 && (
+                                                <div
+                                                    className="absolute border-2 border-green-400 bg-green-400/20 pointer-events-none"
+                                                    style={{
+                                                        left: `${(snap!.rect.x / snap!.captureWidth) * 100}%`,
+                                                        top: `${(snap!.rect.y / snap!.captureHeight) * 100}%`,
+                                                        width: `${(snap!.rect.w / snap!.captureWidth) * 100}%`,
+                                                        height: `${(snap!.rect.h / snap!.captureHeight) * 100}%`
+                                                    }}
+                                                />
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         );

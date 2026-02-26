@@ -19,13 +19,16 @@ interface CameraStore {
     cameras: CameraDevice[];
     selectedCameraId: string;
     availableDevices: MediaDeviceInfo[]; // 可用的本地摄像头设备列表
+    /** 本会话内「视频文件」摄像头的本地 blob 播放地址，避免从服务器拉流卡顿（不持久化） */
+    localBlobUrls: Record<string, string>;
 
     addCamera: (camera: Omit<CameraDevice, 'id' | 'status'> | CameraDevice) => void;
     updateCamera: (id: string, camera: Partial<Omit<CameraDevice, 'id'>>) => void;
     removeCamera: (id: string) => void;
     selectCamera: (id: string) => void;
     updateCameraStatus: (id: string, status: 'online' | 'offline') => void;
-    refreshDevices: () => Promise<void>; // 刷新可用设备列表
+    setLocalBlobUrl: (cameraId: string, blobUrl: string) => void;
+    refreshDevices: () => Promise<void>;
 }
 
 export const useCameraStore = create<CameraStore>()(
@@ -42,6 +45,7 @@ export const useCameraStore = create<CameraStore>()(
             ],
             selectedCameraId: 'local-default',
             availableDevices: [],
+            localBlobUrls: {},
 
             addCamera: (camera) => set((state) => {
                 // 如果已经包含 id，直接使用；否则生成新的 id
@@ -63,15 +67,25 @@ export const useCameraStore = create<CameraStore>()(
             })),
 
             removeCamera: (id) => set((state) => {
+                const prevBlob = state.localBlobUrls[id];
+                if (prevBlob) try { URL.revokeObjectURL(prevBlob); } catch (_) {}
+                const nextBlobUrls = { ...state.localBlobUrls };
+                delete nextBlobUrls[id];
                 const filtered = state.cameras.filter(c => c.id !== id);
-                // 如果移除了当前选中的摄像头，回退到第一个可用摄像头
-                const newSelected = state.selectedCameraId === id 
+                const newSelected = state.selectedCameraId === id
                     ? (filtered[0]?.id || 'local-default')
                     : state.selectedCameraId;
                 return {
                     cameras: filtered,
-                    selectedCameraId: newSelected
+                    selectedCameraId: newSelected,
+                    localBlobUrls: nextBlobUrls
                 };
+            }),
+
+            setLocalBlobUrl: (cameraId, blobUrl) => set((state) => {
+                const prev = state.localBlobUrls[cameraId];
+                if (prev && prev !== blobUrl) try { URL.revokeObjectURL(prev); } catch (_) {}
+                return { localBlobUrls: { ...state.localBlobUrls, [cameraId]: blobUrl } };
             }),
 
             selectCamera: (id) => set({ selectedCameraId: id }),
@@ -101,10 +115,10 @@ export const useCameraStore = create<CameraStore>()(
         }),
         {
             name: 'camera-storage',
-            partialize: (state) => ({ 
+            partialize: (state) => ({
                 cameras: state.cameras,
                 selectedCameraId: state.selectedCameraId
-            }) // 不持久化 availableDevices
+            }) // 不持久化 availableDevices、localBlobUrls（会话内本地播放用）
         }
     )
 );

@@ -11,7 +11,7 @@ interface CameraListProps {
 }
 
 export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
-    const { cameras, selectedCameraId, selectCamera, addCamera, updateCamera, removeCamera, refreshDevices, availableDevices } = useCameraStore();
+    const { cameras, selectedCameraId, selectCamera, addCamera, updateCamera, removeCamera, setLocalBlobUrl, refreshDevices, availableDevices } = useCameraStore();
     const toast = useToastContext();
     const { confirm } = useConfirmContext();
     const [isAdding, setIsAdding] = useState(false);
@@ -104,8 +104,10 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                 longitude: newCam.location?.lng
             });
 
-            // 然后更新本地 store（使用后端返回的完整摄像头对象，包括 ID）
             addCamera(savedCamera);
+            if (addType === 'file' && selectedVideoFile) {
+                setLocalBlobUrl(savedCamera.id, URL.createObjectURL(selectedVideoFile));
+            }
 
             setIsAdding(false);
             setNewCam({ name: '', url: '', type: 'stream', regionCode: '', location: undefined });
@@ -202,6 +204,9 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                 latitude: editCam.location?.lat,
                 longitude: editCam.location?.lng
             });
+            if (addType === 'file' && selectedVideoFile) {
+                setLocalBlobUrl(editingCamera.id, URL.createObjectURL(selectedVideoFile));
+            }
 
             setEditingCamera(null);
             setEditCam({ name: '', url: '', type: 'stream', regionCode: '', location: undefined });

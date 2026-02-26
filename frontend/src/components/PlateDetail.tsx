@@ -107,6 +107,18 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
     const [isDeleting, setIsDeleting] = React.useState(false);
     const dragStartRef = React.useRef({ x: 0, y: 0 });
     const dragOffsetStartRef = React.useRef({ x: 0, y: 0 });
+    const touchStartRef = React.useRef<{
+        type: 'drag' | 'pinch';
+        startX: number;
+        startY: number;
+        startOffset: { x: number; y: number };
+        startScale?: number;
+        startDist?: number;
+    } | null>(null);
+    const getTouchDistance = (touches: React.TouchList) => {
+        if (touches.length < 2) return 0;
+        return Math.hypot(touches[1].clientX - touches[0].clientX, touches[1].clientY - touches[0].clientY);
+    };
 
     const resetImageView = React.useCallback(() => {
         setImageScale(1);
@@ -400,7 +412,7 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                             </div>
 
                             <div
-                                className="w-full h-[76dvh] sm:h-[80vh] overflow-hidden rounded-lg cursor-grab active:cursor-grabbing select-none"
+                                className="w-full h-[76dvh] sm:h-[80vh] overflow-hidden rounded-lg cursor-grab active:cursor-grabbing select-none touch-none"
                                 onWheel={(e) => {
                                     e.preventDefault();
                                     zoomBy(e.deltaY > 0 ? -0.1 : 0.1);
@@ -422,6 +434,42 @@ export const PlateDetail: React.FC<PlateDetailProps> = ({ group, onClose, onDele
                                 }}
                                 onMouseUp={() => setIsDraggingImage(false)}
                                 onMouseLeave={() => setIsDraggingImage(false)}
+                                onTouchStart={(e) => {
+                                    if (e.touches.length === 1) {
+                                        touchStartRef.current = {
+                                            type: 'drag',
+                                            startX: e.touches[0].clientX,
+                                            startY: e.touches[0].clientY,
+                                            startOffset: imageOffset
+                                        };
+                                    } else if (e.touches.length === 2) {
+                                        touchStartRef.current = {
+                                            type: 'pinch',
+                                            startX: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+                                            startY: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+                                            startOffset: imageOffset,
+                                            startScale: imageScale,
+                                            startDist: getTouchDistance(e.touches)
+                                        };
+                                    }
+                                }}
+                                onTouchMove={(e) => {
+                                    const t = touchStartRef.current;
+                                    if (!t || e.touches.length < (t.type === 'pinch' ? 2 : 1)) return;
+                                    e.preventDefault();
+                                    if (t.type === 'drag' && e.touches.length === 1) {
+                                        setImageOffset({
+                                            x: t.startOffset.x + (e.touches[0].clientX - t.startX),
+                                            y: t.startOffset.y + (e.touches[0].clientY - t.startY)
+                                        });
+                                    } else if (t.type === 'pinch' && e.touches.length === 2 && t.startDist && t.startScale != null) {
+                                        const dist = getTouchDistance(e.touches);
+                                        if (dist > 0) setImageScale(clampScale(t.startScale * (dist / t.startDist)));
+                                    }
+                                }}
+                                onTouchEnd={(e) => {
+                                    if (e.touches.length < 2) touchStartRef.current = null;
+                                }}
                             >
                                 <div
                                     className="w-full h-full transition-transform duration-100"
