@@ -396,6 +396,60 @@ export const getCamerasFromDb = async (): Promise<Camera[]> => {
   }
 };
 
+export const getCameraByIdFromDb = async (id: string): Promise<Camera | null> => {
+  const connection = await pool.getConnection();
+  try {
+    try {
+      const [rows] = await connection.execute<RowDataPacket[]>(
+        'SELECT * FROM `cameras` WHERE `id` = ? LIMIT 1',
+        [id]
+      );
+      if (rows.length === 0) return null;
+      const row = rows[0];
+      return {
+        id: row.id,
+        name: row.name,
+        type: row.type,
+        url: row.url || undefined,
+        deviceId: row.device_id || undefined,
+        location: row.location || undefined,
+        regionCode: row.region_code || undefined,
+        latitude: row.latitude ? parseFloat(row.latitude) : undefined,
+        longitude: row.longitude ? parseFloat(row.longitude) : undefined,
+        status: row.status,
+        lastActive: row.last_active ? parseInt(row.last_active) : undefined
+      };
+    } catch (error: any) {
+      if (error.code === 'ER_NO_SUCH_TABLE') {
+        return null;
+      }
+      throw error;
+    }
+  } finally {
+    connection.release();
+  }
+};
+
+export const countCameraUrlReferences = async (url: string): Promise<number> => {
+  const connection = await pool.getConnection();
+  try {
+    try {
+      const [rows] = await connection.execute<RowDataPacket[]>(
+        'SELECT COUNT(*) AS `count` FROM `cameras` WHERE `url` = ?',
+        [url]
+      );
+      return Number(rows[0]?.count || 0);
+    } catch (error: any) {
+      if (error.code === 'ER_NO_SUCH_TABLE') {
+        return 0;
+      }
+      throw error;
+    }
+  } finally {
+    connection.release();
+  }
+};
+
 export const saveCameraToDb = async (camera: Camera): Promise<Camera> => {
   const connection = await pool.getConnection();
   try {

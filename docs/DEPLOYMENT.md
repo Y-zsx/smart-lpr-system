@@ -337,6 +337,7 @@ AI_SERVICE_URL=http://localhost:8001
 
 # 文件上传配置
 MAX_FILE_SIZE=10485760
+MAX_VIDEO_FILE_SIZE=536870912
 PUBLIC_BASE_URL=https://your-domain.com
 
 # 存储驱动：local / cos

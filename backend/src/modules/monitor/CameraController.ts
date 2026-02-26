@@ -1,8 +1,16 @@
 import { NextFunction, Request, Response } from 'express';
-import { getCamerasFromDb, saveCameraToDb, deleteCameraFromDb, Camera } from '../../utils/db';
+import {
+    getCamerasFromDb,
+    saveCameraToDb,
+    deleteCameraFromDb,
+    getCameraByIdFromDb,
+    countCameraUrlReferences,
+    Camera
+} from '../../utils/db';
 import { AuthenticatedRequest } from '../auth';
 import { filterItemsByScope } from '../../utils/dataScope';
 import { AppError } from '../../utils/AppError';
+import { deleteStoredFile } from '../../services/storageService';
 
 export const getCameras = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
@@ -58,7 +66,16 @@ export const deleteCamera = async (req: Request, res: Response, next: NextFuncti
             next(new AppError('Camera ID is required', 400, 'VALIDATION_ERROR'));
             return;
         }
+        const camera = await getCameraByIdFromDb(id);
         await deleteCameraFromDb(id);
+        if (camera?.type === 'file' && camera.url) {
+            const refs = await countCameraUrlReferences(camera.url);
+            if (refs === 0) {
+                await deleteStoredFile(camera.url).catch((error) => {
+                    console.warn('Failed to cleanup camera media file:', camera.url, error);
+                });
+            }
+        }
         res.json({ message: 'Camera deleted successfully' });
     } catch (error) {
         console.error('Error deleting camera:', error);

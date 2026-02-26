@@ -53,6 +53,22 @@ const upload = multer({
         cb(null, true);
     }
 });
+const MAX_VIDEO_FILE_SIZE = Math.max(5 * 1024 * 1024, Number(process.env.MAX_VIDEO_FILE_SIZE || 512 * 1024 * 1024));
+const videoUpload = multer({
+    dest: path.join(__dirname, '../../uploads/temp'),
+    limits: {
+        fileSize: MAX_VIDEO_FILE_SIZE,
+        files: 1
+    },
+    fileFilter: (_req, file, cb) => {
+        const isVideo = file.mimetype.startsWith('video/');
+        if (!isVideo) {
+            cb(new Error('Only video files are allowed'));
+            return;
+        }
+        cb(null, true);
+    }
+});
 
 // Auth
 router.post('/auth/login', authLimiter, AuthController.login);
@@ -76,6 +92,7 @@ router.post('/upload-url', uploadLimiter, requireAuth, requirePermission('plate.
 router.put('/upload/put/:filename', uploadLimiter, requireAuth, requirePermission('plate.manage'), UploadController.handleFileUpload);
 router.get('/media/redirect', requireAuth, MediaController.redirectMedia);
 router.get('/media/download', requireAuth, MediaController.downloadMedia);
+router.post('/media/upload-video', uploadLimiter, requireAuth, requirePermission('camera.manage'), videoUpload.single('file'), MediaController.uploadVideoMedia);
 
 // Stats
 router.get('/stats/daily', requireAuth, requirePermission('dashboard.view'), applyDataScope(), StatsController.getDailyStats);

@@ -48,11 +48,17 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
     const [isTestingStream, setIsTestingStream] = useState(false);
     const [isDiscoveringOnvif, setIsDiscoveringOnvif] = useState(false);
     const [onvifDevices, setOnvifDevices] = useState<OnvifDiscoveredDevice[]>([]);
+    const [uploadingVideoFor, setUploadingVideoFor] = useState<'add' | 'edit' | null>(null);
+    const [uploadingVideoName, setUploadingVideoName] = useState<string>('');
 
     // 移除自动刷新设备列表，避免自动请求摄像头权限
     // 用户需要时可以手动点击刷新按钮
 
     const handleAdd = async () => {
+        if (uploadingVideoFor === 'add') {
+            toast.info('视频上传中，请稍后');
+            return;
+        }
         if (!newCam.name) {
             toast.warning('请输入摄像头名称');
             return;
@@ -91,15 +97,26 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
         }
     };
 
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            const url = URL.createObjectURL(file);
-            if (locationPickerFor === 'add') {
-                setNewCam({ ...newCam, url, name: newCam.name || file.name });
+        if (!file) return;
+        const target: 'add' | 'edit' = editingCamera ? 'edit' : 'add';
+        try {
+            setUploadingVideoFor(target);
+            setUploadingVideoName(file.name);
+            const uploaded = await apiClient.uploadVideoMedia(file);
+            if (target === 'add') {
+                setNewCam((prev) => ({ ...prev, url: uploaded.path, name: prev.name || file.name }));
             } else {
-                setEditCam({ ...editCam, url, name: editCam.name || file.name });
+                setEditCam((prev) => ({ ...prev, url: uploaded.path, name: prev.name || file.name }));
             }
+            toast.success('视频已保存');
+        } catch (error) {
+            console.error('视频上传失败:', error);
+            toast.error(error instanceof Error ? error.message : '视频上传失败');
+        } finally {
+            setUploadingVideoFor(null);
+            setUploadingVideoName('');
         }
     };
 
@@ -121,6 +138,10 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
 
     const handleSaveEdit = async () => {
         if (!editingCamera) return;
+        if (uploadingVideoFor === 'edit') {
+            toast.info('视频上传中，请稍后');
+            return;
+        }
         
         if (!editCam.name) {
             toast.warning('请输入摄像头名称');
@@ -548,8 +569,12 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                                         type="file"
                                         accept="video/*"
                                         onChange={handleFileSelect}
+                                        disabled={uploadingVideoFor === 'add'}
                                         className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500"
                                     />
+                                    {uploadingVideoFor === 'add' && (
+                                        <p className="text-xs text-blue-600 mt-1">上传中：{uploadingVideoName}</p>
+                                    )}
                                     {newCam.url && (
                                         <p className="text-xs text-green-600 mt-1">✓ 文件已选择</p>
                                     )}
@@ -724,8 +749,12 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                                         type="file"
                                         accept="video/*"
                                         onChange={handleFileSelect}
+                                        disabled={uploadingVideoFor === 'edit'}
                                         className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500"
                                     />
+                                    {uploadingVideoFor === 'edit' && (
+                                        <p className="text-xs text-blue-600 mt-1">上传中：{uploadingVideoName}</p>
+                                    )}
                                     {editCam.url && (
                                         <p className="text-xs text-green-600 mt-1">✓ 文件已选择</p>
                                     )}

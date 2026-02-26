@@ -26,7 +26,11 @@ const MIME_EXTENSION_MAP: Record<string, string> = {
     'image/png': '.png',
     'image/webp': '.webp',
     'image/gif': '.gif',
-    'image/bmp': '.bmp'
+    'image/bmp': '.bmp',
+    'video/mp4': '.mp4',
+    'video/webm': '.webm',
+    'video/quicktime': '.mov',
+    'video/x-matroska': '.mkv'
 };
 
 const sanitizeFilename = (input: string): string => input.replace(/[^a-zA-Z0-9._-]/g, '_');

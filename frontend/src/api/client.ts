@@ -55,6 +55,16 @@ function buildApiUrl(baseUrl: string, endpoint: string): string {
     return `${normalizeBaseUrl(baseUrl)}${endpoint}`;
 }
 
+function inferFilenameFromMediaPath(path?: string): string {
+    if (!path) return `media-${Date.now()}.jpg`;
+    const normalized = path.split('?')[0] || path;
+    const last = decodeURIComponent(normalized.split('/').pop() || '');
+    const safe = last.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_');
+    if (!safe) return `media-${Date.now()}.jpg`;
+    if (safe.includes('.')) return safe;
+    return `${safe}.jpg`;
+}
+
 type ApiErrorPayload = {
     success?: boolean;
     code?: string;
@@ -122,6 +132,12 @@ export interface AlarmMedia {
     errorMessage?: string;
     createdAt: number;
     updatedAt: number;
+}
+
+export interface UploadedMedia {
+    path: string;
+    playUrl: string;
+    downloadUrl: string;
 }
 export interface OnvifDiscoveredDevice {
     endpoint: string;
@@ -426,6 +442,40 @@ export const apiClient = {
         });
     },
 
+    async uploadVideoMedia(file: File): Promise<UploadedMedia> {
+        const formData = new FormData();
+        formData.append('file', file);
+        const token = getStoredToken();
+        const candidates = getBackendCandidates();
+        let lastError: unknown;
+        for (const base of candidates) {
+            const url = buildApiUrl(base, '/api/media/upload-video');
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+                    body: formData
+                });
+                if (!res.ok) {
+                    let message = `上传失败 (${res.status})`;
+                    try {
+                        const payload = await res.json();
+                        message = payload?.message || message;
+                    } catch (_error) {
+                        // ignore payload parse errors
+                    }
+                    throw new ApiRequestError(message, { status: res.status });
+                }
+                const payload = await res.json();
+                activeBackendUrl = base;
+                return payload as UploadedMedia;
+            } catch (error) {
+                lastError = error;
+            }
+        }
+        throw lastError instanceof Error ? lastError : new Error('视频上传失败');
+    },
+
     async updateAlarmMedia(id: number, payload: {
         status?: AlarmMediaStatus;
         durationSec?: number;
@@ -569,11 +619,26 @@ export const apiClient = {
         const base = normalizeBaseUrl(activeBackendUrl || resolveInitialBackendUrl());
         const token = getStoredToken();
         const tokenQuery = token ? `&token=${encodeURIComponent(token)}` : '';
+        const filenameQuery = `&filename=${encodeURIComponent(inferFilenameFromMediaPath(path))}`;
         if (path.startsWith('cos://') || path.startsWith('uploads/')) {
-            return `${base}/api/media/redirect?path=${encodeURIComponent(path)}${tokenQuery}`;
+            return `${base}/api/media/redirect?path=${encodeURIComponent(path)}${filenameQuery}${tokenQuery}`;
         }
         if (path.startsWith('data:') || path.startsWith('blob:')) {
             return path;
+        }
+        return `${base}/${path}`;
+    },
+
+    getMediaUrl(path?: string): string {
+        if (!path) return '';
+        if (path.startsWith('http://') || path.startsWith('https://')) return path;
+        if (path.startsWith('blob:') || path.startsWith('data:')) return path;
+        const base = normalizeBaseUrl(activeBackendUrl || resolveInitialBackendUrl());
+        const token = getStoredToken();
+        const tokenQuery = token ? `&token=${encodeURIComponent(token)}` : '';
+        const filenameQuery = `&filename=${encodeURIComponent(inferFilenameFromMediaPath(path))}`;
+        if (path.startsWith('cos://') || path.startsWith('uploads/')) {
+            return `${base}/api/media/redirect?path=${encodeURIComponent(path)}${filenameQuery}${tokenQuery}`;
         }
         return `${base}/${path}`;
     },

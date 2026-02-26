@@ -50,6 +50,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     const streamPreviewUrl = isStream
         ? (useDirectStreamPreview ? directStreamUrl : (proxyStreamUrl || directStreamUrl))
         : '';
+    const fileVideoUrl = isFile ? apiClient.getMediaUrl(currentCamera?.url) : '';
 
     // 使用独立扫描状态或全局扫描状态
     const isScanning = independentScanning ? localScanning : globalScanning;
@@ -106,13 +107,13 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     const startCamera = async () => {
         if (isFile) {
             // 视频文件模式 - 确保视频有 src 并开始播放
-            if (fileVideoRef.current && currentCamera?.url) {
+            if (fileVideoRef.current && fileVideoUrl) {
                 const video = fileVideoRef.current;
                 
                 // 确保 src 已设置
-                if (!video.src || video.src !== currentCamera.url) {
-                    console.log('设置视频 src:', currentCamera.url.substring(0, 50));
-                    video.src = currentCamera.url;
+                if (!video.src || video.src !== fileVideoUrl) {
+                    console.log('设置视频 src:', fileVideoUrl.substring(0, 50));
+                    video.src = fileVideoUrl;
                     video.load();
                 }
                 
@@ -159,8 +160,8 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
             } else {
                 console.warn('视频元素或 URL 未准备好:', {
                     hasRef: !!fileVideoRef.current,
-                    hasUrl: !!currentCamera?.url,
-                    url: currentCamera?.url?.substring(0, 50)
+                    hasUrl: !!fileVideoUrl,
+                    url: fileVideoUrl?.substring(0, 50)
                 });
             }
             return;
@@ -462,21 +463,21 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         }
         
         // 如果是视频文件，直接设置 src 并加载
-        if (isFile && currentCamera?.url && fileVideoRef.current) {
+        if (isFile && fileVideoUrl && fileVideoRef.current) {
             console.log('设置视频文件 src:', {
                 name: currentCamera.name,
-                url: currentCamera.url.substring(0, 50),
-                fullUrl: currentCamera.url,
+                url: fileVideoUrl.substring(0, 50),
+                fullUrl: fileVideoUrl,
                 hasRef: !!fileVideoRef.current,
                 effectiveCameraId
             });
             
             // 直接设置 src，确保视频元素有正确的 URL
             const video = fileVideoRef.current;
-            const needsReload = !video.src || video.src !== currentCamera.url;
+            const needsReload = !video.src || video.src !== fileVideoUrl;
             
             if (needsReload) {
-                video.src = currentCamera.url;
+                video.src = fileVideoUrl;
                 video.load(); // 强制重新加载
             }
             
@@ -526,7 +527,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
             console.warn('视频文件摄像头没有 URL:', currentCamera);
             setError('视频文件 URL 缺失，请重新添加视频文件');
         }
-    }, [effectiveCameraId, propCameraId, currentCamera?.id, currentCamera?.url, isFile, isLocal, currentCamera?.name, streamPreviewUrl]);
+    }, [effectiveCameraId, propCameraId, currentCamera?.id, currentCamera?.url, fileVideoUrl, isFile, isLocal, currentCamera?.name, streamPreviewUrl]);
 
     useEffect(() => {
         if (!effectiveCameraId || !currentCamera) {
@@ -608,10 +609,10 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
             <div className="relative flex-1 bg-black overflow-hidden group">
                 {isFile ? (
                     // 视频文件模式：始终渲染，不依赖 hasPermission
-                    currentCamera?.url ? (
+                    fileVideoUrl ? (
                         <video
                             ref={fileVideoRef}
-                            key={`${effectiveCameraId}-${currentCamera.url?.substring(0, 20)}`} // 使用 effectiveCameraId 确保摄像头切换时重新渲染
+                            key={`${effectiveCameraId}-${fileVideoUrl?.substring(0, 20)}`} // 使用 effectiveCameraId 确保摄像头切换时重新渲染
                             autoPlay
                             playsInline
                             muted
@@ -656,7 +657,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                                 onLoadedMetadata={() => {
                                     console.log('视频元数据加载完成', { cameraId: currentCamera?.id });
                                     // 视频元数据加载完成，尝试自动播放
-                                    if (fileVideoRef.current && currentCamera?.url) {
+                                    if (fileVideoRef.current && fileVideoUrl) {
                                         fileVideoRef.current.play().catch(err => {
                                             console.log('自动播放被阻止，等待用户交互:', err);
                                         });
@@ -668,7 +669,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                                 onCanPlay={() => {
                                     console.log('视频可以播放', { cameraId: currentCamera?.id });
                                     // 视频可以播放时，尝试自动播放
-                                    if (fileVideoRef.current && currentCamera?.url) {
+                                    if (fileVideoRef.current && fileVideoUrl) {
                                         fileVideoRef.current.play().catch(err => {
                                             console.log('自动播放被阻止:', err);
                                         });
@@ -685,7 +686,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                                 }}
                                 onLoadStart={() => {
                                     console.log('视频开始加载:', {
-                                        url: currentCamera.url?.substring(0, 50),
+                                        url: fileVideoUrl?.substring(0, 50),
                                         cameraId: currentCamera.id,
                                         cameraName: currentCamera.name,
                                         hasRef: !!fileVideoRef.current,
