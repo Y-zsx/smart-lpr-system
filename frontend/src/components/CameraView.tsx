@@ -544,9 +544,14 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     // 摄像头切换时：取消叠加状态；仅停止本地流，不清空新摄像头的 img/video src（否则会清到刚挂上的新元素）
     useEffect(() => {
         setError('');
-        setFileVideoBlobLoading(false);
         setFileVideoBlobError(null);
         setHasPermission(false);
+        // 只有切到非「远程文件」时清空加载态，切到远程文件时保留/显示加载，避免闪成「未配置」
+        if (!(isFile && isRemoteFileUrl)) {
+            setFileVideoBlobLoading(false);
+        } else {
+            setFileVideoBlobLoading(true);
+        }
         // 只停止本地摄像头流；remoteVideoRef/fileVideoRef 在切换后已指向新元素，不能清 src
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(t => t.stop());
@@ -789,7 +794,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                                 console.log('视频数据加载完成');
                             }}
                         />
-                    ) : isRemoteFileUrl && (fileVideoBlobLoading || fileVideoBlobError) ? (
+                    ) : (isRemoteFileUrl || (currentCamera?.url && !fileVideoUrl)) && (fileVideoBlobLoading || fileVideoBlobError) ? (
                         <div className="flex flex-col items-center justify-center h-full text-gray-500">
                             {fileVideoBlobLoading ? (
                                 <>
@@ -810,6 +815,11 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                                     </button>
                                 </>
                             )}
+                        </div>
+                    ) : currentCamera?.url && !fileVideoUrl ? (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                            <div className="animate-spin rounded-full h-10 w-10 border-2 border-blue-500 border-t-transparent mb-4" />
+                            <p className="text-sm">正在加载视频…</p>
                         </div>
                     ) : (
                         <div className="flex flex-col items-center justify-center h-full text-gray-500">
