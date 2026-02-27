@@ -366,9 +366,14 @@ export const apiClient = {
         return request(url);
     },
 
-    async getDashboardStats(date?: number): Promise<any> {
-        const url = date ? `/api/stats/dashboard?date=${date}` : '/api/stats/dashboard';
-        return request(url);
+    async getDashboardStats(dateOrStart?: number, end?: number): Promise<any> {
+        if (dateOrStart != null && end != null) {
+            return request(`/api/stats/dashboard?start=${dateOrStart}&end=${end}`);
+        }
+        if (dateOrStart != null) {
+            return request(`/api/stats/dashboard?date=${dateOrStart}`);
+        }
+        return request('/api/stats/dashboard');
     },
 
     async getRegionStats(range: 'daily' | 'total' = 'total', date?: number) {

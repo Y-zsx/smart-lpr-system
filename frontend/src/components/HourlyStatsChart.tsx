@@ -6,14 +6,19 @@ import { usePlateStore } from '../store/plateStore';
 import { usePlateHistory } from '@/hooks/usePlateHistory';
 
 interface HourlyStatsChartProps {
-    date?: string; // 可选的日期参数，undefined 表示总量模式
+    date?: string; // 单日时使用，undefined 表示总量模式
+    startDate?: string;
+    endDate?: string; // 与 startDate 一起表示区间
 }
 
-export const HourlyStatsChart: React.FC<HourlyStatsChartProps> = React.memo(({ date }) => {
+export const HourlyStatsChart: React.FC<HourlyStatsChartProps> = React.memo(({ date, startDate, endDate }) => {
     const [hourlyData, setHourlyData] = useState<number[]>(new Array(24).fill(0));
     const [loading, setLoading] = useState(true);
     const { settings } = usePlateStore();
-    const { data: groups } = usePlateHistory({ date, groupBy: 'plate' });
+    const { data: groups } = usePlateHistory({
+        ...(startDate != null && endDate != null ? { startDate, endDate } : { date }),
+        groupBy: 'plate'
+    });
 
     useEffect(() => {
         const fetchHourlyStats = async () => {
@@ -47,7 +52,7 @@ export const HourlyStatsChart: React.FC<HourlyStatsChartProps> = React.memo(({ d
         };
 
         fetchHourlyStats();
-    }, [date, settings.isDemoMode, groups]);
+    }, [date, startDate, endDate, settings.isDemoMode, groups]);
 
     const getOption = () => {
         const hours = Array.from({ length: 24 }, (_, i) => `${i.toString().padStart(2, '0')}:00`);

@@ -58,7 +58,8 @@ const CHINA_NAME_TO_CODE: Record<string, string> = (() => {
 })();
 
 interface PlateHeatmapProps {
-    date?: string; // 可选的日期参数，undefined 表示总量模式
+    date?: string; // 结束日期，undefined 表示总量模式
+    startDate?: string; // 区间开始日期
 }
 
 const toSafeNumber = (value: unknown, fallback = 0): number => {
@@ -66,7 +67,7 @@ const toSafeNumber = (value: unknown, fallback = 0): number => {
     return Number.isFinite(n) ? n : fallback;
 };
 
-export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date }) => {
+export const PlateHeatmap: React.FC<PlateHeatmapProps> = React.memo(({ date, startDate: _startDate }) => {
     const CHINA_GEOJSON_SOURCES = [
         // ECharts v5 package does not contain this map path on CDN.
         // Use v4.9.0 published map assets first, then fallback to Aliyun source.

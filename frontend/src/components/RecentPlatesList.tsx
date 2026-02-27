@@ -6,18 +6,22 @@ import { arePlateGroupsEqual } from '../utils/dataComparison';
 import { usePlateHistory } from '@/hooks/usePlateHistory';
 
 interface RecentPlatesListProps {
-    date?: string; // 可选的日期参数，undefined 表示总量模式
+    date?: string; // 单日时使用，undefined 表示总量模式
+    startDate?: string;
+    endDate?: string; // 与 startDate 一起表示区间
     limit?: number; // 显示的数量限制，默认10
 }
 
-export const RecentPlatesList: React.FC<RecentPlatesListProps> = React.memo(({ date, limit = 10 }) => {
+export const RecentPlatesList: React.FC<RecentPlatesListProps> = React.memo(({ date, startDate, endDate, limit = 10 }) => {
     const [recentPlates, setRecentPlates] = useState<PlateGroup[]>([]);
     const [loading, setLoading] = useState(true);
     const { settings } = usePlateStore();
     const isInitialLoad = useRef(true);
-    const isToday = date === new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
+    const isSingleDay = startDate != null && endDate != null && startDate === endDate;
+    const isToday = (startDate != null && endDate != null ? isSingleDay && endDate === today : date === today);
     const { data: plateGroups, loading: historyLoading } = usePlateHistory({
-        date,
+        ...(startDate != null && endDate != null ? { startDate, endDate } : { date }),
         groupBy: 'plate',
         autoRefresh: isToday && !settings.isDemoMode,
         refreshIntervalMs: 5000

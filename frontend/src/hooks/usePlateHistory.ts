@@ -4,6 +4,9 @@ import { PlateGroup } from '@/types/plate';
 
 type UsePlateHistoryParams = {
     date?: string;
+    /** 日期区间：与 date 二选一，同时存在时优先用区间 */
+    startDate?: string;
+    endDate?: string;
     type?: string;
     groupBy?: 'plate';
     autoRefresh?: boolean;
@@ -16,9 +19,16 @@ type HistoryCacheValue = {
 };
 
 const cache = new Map<string, HistoryCacheValue>();
+const inFlight = new Map<string, Promise<PlateGroup[]>>();
 const CACHE_TTL_MS = 4000;
 
-function toRange(date?: string): { start?: number; end?: number } {
+function toRange(params: { date?: string; startDate?: string; endDate?: string }): { start?: number; end?: number } {
+    const { date, startDate, endDate } = params;
+    if (startDate != null && endDate != null && startDate !== '' && endDate !== '') {
+        const start = new Date(startDate).setHours(0, 0, 0, 0);
+        const end = new Date(endDate).setHours(23, 59, 59, 999);
+        if (!Number.isNaN(start) && !Number.isNaN(end)) return { start, end };
+    }
     if (!date) return { start: undefined, end: undefined };
     return {
         start: new Date(date).setHours(0, 0, 0, 0),
@@ -29,6 +39,8 @@ function toRange(date?: string): { start?: number; end?: number } {
 export function usePlateHistory(params: UsePlateHistoryParams) {
     const {
         date,
+        startDate,
+        endDate,
         type,
         groupBy = 'plate',
         autoRefresh = false,
@@ -37,7 +49,10 @@ export function usePlateHistory(params: UsePlateHistoryParams) {
     const [data, setData] = useState<PlateGroup[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const cacheKey = useMemo(() => JSON.stringify({ date: date || '', type: type || '', groupBy }), [date, type, groupBy]);
+    const cacheKey = useMemo(
+        () => JSON.stringify({ date: date || '', startDate: startDate || '', endDate: endDate || '', type: type || '', groupBy }),
+        [date, startDate, endDate, type, groupBy]
+    );
 
     const load = useCallback(async (force = false, signal?: AbortSignal) => {
         const now = Date.now();
@@ -48,10 +63,30 @@ export function usePlateHistory(params: UsePlateHistoryParams) {
             setError(null);
             return;
         }
-        try {
-            const { start, end } = toRange(date);
+        let promise = inFlight.get(cacheKey);
+        if (promise) {
+            try {
+                const normalized = await promise;
+                setData(normalized);
+                setError(null);
+                cache.set(cacheKey, { ts: Date.now(), data: normalized });
+            } catch (err) {
+                if (!(err instanceof DOMException && err.name === 'AbortError')) {
+                    setError(err instanceof Error ? err.message : '加载失败');
+                }
+            } finally {
+                setLoading(false);
+            }
+            return;
+        }
+        promise = (async () => {
+            const { start, end } = toRange({ date, startDate, endDate });
             const groups = await apiClient.getHistory(start, end, type, groupBy, { signal });
-            const normalized = (Array.isArray(groups) ? groups : []) as PlateGroup[];
+            return (Array.isArray(groups) ? groups : []) as PlateGroup[];
+        })();
+        inFlight.set(cacheKey, promise);
+        try {
+            const normalized = await promise;
             setData(normalized);
             setError(null);
             cache.set(cacheKey, { ts: Date.now(), data: normalized });
@@ -60,9 +95,10 @@ export function usePlateHistory(params: UsePlateHistoryParams) {
                 setError(err instanceof Error ? err.message : '加载失败');
             }
         } finally {
+            inFlight.delete(cacheKey);
             setLoading(false);
         }
-    }, [cacheKey, date, groupBy, type]);
+    }, [cacheKey, date, startDate, endDate, groupBy, type]);
 
     useEffect(() => {
         setLoading(true);

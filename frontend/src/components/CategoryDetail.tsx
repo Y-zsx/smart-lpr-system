@@ -9,15 +9,17 @@ interface CategoryDetailProps {
     type: string;
     label: string;
     onClose: () => void;
-    date?: string; // 可选的日期参数，格式：YYYY-MM-DD
+    date?: string; // 单日时使用，格式：YYYY-MM-DD
+    startDate?: string;
+    endDate?: string; // 与 startDate 一起表示区间
 }
 
-export const CategoryDetail: React.FC<CategoryDetailProps> = ({ type, label, onClose, date }) => {
+export const CategoryDetail: React.FC<CategoryDetailProps> = ({ type, label, onClose, date, startDate, endDate }) => {
     const [groups, setGroups] = useState<PlateGroup[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedGroup, setSelectedGroup] = useState<PlateGroup | null>(null);
     const { data: historyGroups, loading: historyLoading, refresh } = usePlateHistory({
-        date,
+        ...(startDate != null && endDate != null ? { startDate, endDate } : { date }),
         type,
         groupBy: 'plate'
     });

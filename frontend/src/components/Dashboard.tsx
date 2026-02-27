@@ -20,8 +20,10 @@ import { simulationService } from '../services/simulationService';
 
 export const Dashboard: React.FC = () => {
     const { stats, setPlates, setTrends, setStats, settings } = usePlateStore();
+    const today = () => new Date().toISOString().split('T')[0];
     const [mode, setMode] = useState<'camera' | 'upload'>('camera');
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState(today());
+    const [endDate, setEndDate] = useState(today());
     const [dataMode, setDataMode] = useState<'date' | 'total'>('date'); // 数据模式：日期模式或总量模式
     const [selectedCategory, setSelectedCategory] = useState<{ type: string, label: string } | null>(null);
     const [showBlacklist, setShowBlacklist] = useState(false);
@@ -47,15 +49,15 @@ export const Dashboard: React.FC = () => {
                 
                 // 如果是总量模式，不传递日期参数
                 if (dataMode === 'date') {
-                    start = new Date(selectedDate).setHours(0, 0, 0, 0);
-                    end = new Date(selectedDate).setHours(23, 59, 59, 999);
+                    start = new Date(startDate).setHours(0, 0, 0, 0);
+                    end = new Date(endDate).setHours(23, 59, 59, 999);
                 }
                 
                 // 并行请求历史记录和趋势数据
                 const [groups, dashboardStats] = await Promise.all([
                     apiClient.getHistory(start, end, undefined, 'plate'), // 使用分组查询
                     dataMode === 'date' 
-                        ? apiClient.getDashboardStats(start).catch(err => {
+                        ? apiClient.getDashboardStats(start, end).catch(err => {
                             console.warn("Failed to fetch dashboard stats:", err);
                             return null;
                         })
@@ -71,7 +73,8 @@ export const Dashboard: React.FC = () => {
                 if (dashboardStats) {
                     console.log('收到仪表盘统计数据:', {
                         dataMode,
-                        selectedDate,
+                        startDate,
+                        endDate,
                         start,
                         dashboardStats,
                         trends: dashboardStats.trends
@@ -97,7 +100,7 @@ export const Dashboard: React.FC = () => {
         fetchData();
 
         // 只有在日期模式且是今天时才自动刷新
-        const isToday = dataMode === 'date' && selectedDate === new Date().toISOString().split('T')[0];
+        const isToday = dataMode === 'date' && startDate === today() && endDate === today();
         let interval: number;
 
         if (isToday) {
@@ -116,7 +119,7 @@ export const Dashboard: React.FC = () => {
             if (interval) clearInterval(interval);
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
-    }, [selectedDate, dataMode, setPlates, setStats]);
+    }, [startDate, endDate, dataMode, setPlates, setStats]);
 
     const handleModeChange = (newMode: 'camera' | 'upload') => {
         if (settings.enableHaptics) hapticFeedback('light');
@@ -179,18 +182,33 @@ export const Dashboard: React.FC = () => {
                     <span className="hidden sm:inline">总量</span>
                 </button>
             </div>
-            {/* 日期选择器 - 只在日期模式下显示 */}
+            {/* 日期区间 - 只在日期模式下显示 */}
             {dataMode === 'date' && (
-                <div className="relative">
+                <div className="flex flex-wrap items-center gap-2 text-sm">
                     <input
                         type="date"
-                        value={selectedDate}
-                        onChange={(e) => setSelectedDate(e.target.value)}
-                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                        value={startDate}
+                        max={endDate}
+                        onChange={(e) => {
+                            const v = e.target.value;
+                            setStartDate(v);
+                            if (v > endDate) setEndDate(v);
+                        }}
+                        className="px-2 py-1 rounded border border-gray-200 bg-white text-gray-700"
                     />
-                    <button className="p-2 text-gray-600 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors">
-                        <Calendar size={20} />
-                    </button>
+                    <span className="text-gray-400">至</span>
+                    <input
+                        type="date"
+                        value={endDate}
+                        min={startDate}
+                        onChange={(e) => {
+                            const v = e.target.value;
+                            setEndDate(v);
+                            if (v < startDate) setStartDate(v);
+                        }}
+                        className="px-2 py-1 rounded border border-gray-200 bg-white text-gray-700"
+                    />
+                    <span className="text-gray-600">{startDate === endDate ? startDate : `${startDate} 至 ${endDate}`}</span>
                 </div>
             )}
         </div>
@@ -201,7 +219,7 @@ export const Dashboard: React.FC = () => {
             {/* 1. Stat Cards Row */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <StatCard
-                    label={dataMode === 'total' ? "总量识别" : (selectedDate === new Date().toISOString().split('T')[0] ? "今日识别" : "当日识别")}
+                    label={dataMode === 'total' ? "总量识别" : (startDate === today() && endDate === today() ? "今日识别" : (startDate === endDate ? "当日识别" : "区间识别"))}
                     value={stats.total}
                     icon={<Activity size={20} />}
                     color="bg-blue-500"
@@ -271,8 +289,8 @@ export const Dashboard: React.FC = () => {
                     
                     {/* Charts Row */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-[350px]">
-                         <DailyStatsChart date={dataMode === 'total' ? undefined : selectedDate} />
-                         <PlateHeatmap date={dataMode === 'total' ? undefined : selectedDate} />
+                         <DailyStatsChart date={dataMode === 'total' ? undefined : endDate} startDate={dataMode === 'date' ? startDate : undefined} />
+                         <PlateHeatmap date={dataMode === 'total' ? undefined : endDate} startDate={dataMode === 'date' ? startDate : undefined} />
                     </div>
                 </div>
 
@@ -284,7 +302,7 @@ export const Dashboard: React.FC = () => {
                      {/* Plate List - Flex Grow to fill space */}
                      <div className="flex-1 min-h-[400px] max-h-[600px] bg-white rounded-2xl shadow-sm border border-gray-100 p-4 flex flex-col">
                         <div className="flex-1 min-h-0 overflow-y-auto">
-                            <PlateList date={dataMode === 'total' ? undefined : selectedDate} />
+                            <PlateList startDate={dataMode === 'date' ? startDate : undefined} endDate={dataMode === 'date' ? endDate : undefined} />
                         </div>
                      </div>
 
@@ -304,7 +322,9 @@ export const Dashboard: React.FC = () => {
                     type={selectedCategory.type}
                     label={selectedCategory.label}
                     onClose={() => setSelectedCategory(null)}
-                    date={dataMode === 'total' ? undefined : selectedDate}
+                    date={dataMode === 'total' ? undefined : endDate}
+                    startDate={dataMode === 'date' ? startDate : undefined}
+                    endDate={dataMode === 'date' ? endDate : undefined}
                 />
             )}
 

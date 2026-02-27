@@ -9,10 +9,12 @@ import { arePlateGroupsEqual } from '../utils/dataComparison';
 import { usePlateHistory } from '@/hooks/usePlateHistory';
 
 interface PlateListProps {
-    date?: string; // 可选的日期参数，undefined 表示总量模式
+    date?: string; // 单日时使用，undefined 表示总量模式
+    startDate?: string;
+    endDate?: string; // 与 startDate 一起表示区间
 }
 
-export const PlateList: React.FC<PlateListProps> = React.memo(({ date }) => {
+export const PlateList: React.FC<PlateListProps> = React.memo(({ date, startDate, endDate }) => {
     const { settings } = usePlateStore();
     const toast = useToastContext();
     const [searchTerm, setSearchTerm] = useState('');
@@ -21,9 +23,11 @@ export const PlateList: React.FC<PlateListProps> = React.memo(({ date }) => {
     const [selectedGroup, setSelectedGroup] = useState<PlateGroup | null>(null);
     const [loading, setLoading] = useState(true);
     const isInitialLoad = useRef(true);
-    const isToday = date === new Date().toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
+    const isSingleDay = startDate != null && endDate != null && startDate === endDate;
+    const isToday = (startDate != null && endDate != null ? isSingleDay && endDate === today : date === today);
     const { data: historyGroups, loading: historyLoading, refresh } = usePlateHistory({
-        date,
+        ...(startDate != null && endDate != null ? { startDate, endDate } : { date }),
         groupBy: 'plate',
         autoRefresh: isToday,
         refreshIntervalMs: 5000
@@ -63,10 +67,19 @@ export const PlateList: React.FC<PlateListProps> = React.memo(({ date }) => {
     const handleExport = async () => {
         setIsExporting(true);
         try {
-            let start, end;
-            if (date) {
+            let start: number | undefined;
+            let end: number | undefined;
+            let exportLabel: string;
+            if (startDate != null && endDate != null) {
+                start = new Date(startDate).setHours(0, 0, 0, 0);
+                end = new Date(endDate).setHours(23, 59, 59, 999);
+                exportLabel = startDate === endDate ? startDate : `${startDate}_${endDate}`;
+            } else if (date) {
                 start = new Date(date).setHours(0, 0, 0, 0);
                 end = new Date(date).setHours(23, 59, 59, 999);
+                exportLabel = date;
+            } else {
+                exportLabel = '全部';
             }
 
             // 导出所有记录（包括重复的识别记录）
@@ -74,7 +87,7 @@ export const PlateList: React.FC<PlateListProps> = React.memo(({ date }) => {
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
             link.href = url;
-            link.download = `车牌识别记录_${date || '全部'}.csv`;
+            link.download = `车牌识别记录_${exportLabel}.csv`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);

@@ -5,14 +5,60 @@ import { AuthenticatedRequest } from '../auth';
 import { filterPlateGroupsByScope } from '../../utils/dataScope';
 import { AppError } from '../../utils/AppError';
 
+const parseNum = (v: unknown): number | undefined => {
+    if (v == null) return undefined;
+    const n = typeof v === 'number' ? v : Number(String(Array.isArray(v) ? v[0] : v));
+    return Number.isFinite(n) ? n : undefined;
+};
+
+const calculateTrend = (current: number, previous: number): { value: string; direction: 'up' | 'down' | 'neutral' } => {
+    if (previous === 0) {
+        if (current === 0) return { value: '0%', direction: 'neutral' };
+        return { value: '+100%', direction: 'up' };
+    }
+    const change = ((current - previous) / previous) * 100;
+    const rounded = Math.round(change);
+    if (rounded > 0) return { value: `+${rounded}%`, direction: 'up' };
+    if (rounded < 0) return { value: `${rounded}%`, direction: 'down' };
+    return { value: '0%', direction: 'neutral' };
+};
+
 export const getDashboardStats = async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
     try {
-        const { date } = req.query;
+        const { date, start: startQ, end: endQ } = req.query;
         let selectedGroups;
         let total, blue, green, yellow, other;
         let trends;
 
-        if (date) {
+        const rangeStart = parseNum(startQ);
+        const rangeEnd = parseNum(endQ);
+        const useRange = rangeStart != null && rangeEnd != null && rangeStart <= rangeEnd;
+
+        if (useRange) {
+            selectedGroups = await getPlateGroups({ start: rangeStart, end: rangeEnd });
+            selectedGroups = filterPlateGroupsByScope(selectedGroups, req.dataScope);
+            total = selectedGroups.length;
+            blue = selectedGroups.filter(g => g.plateType === 'blue').length;
+            green = selectedGroups.filter(g => g.plateType === 'green').length;
+            yellow = selectedGroups.filter(g => g.plateType === 'yellow').length;
+            other = total - blue - green - yellow;
+            const periodMs = rangeEnd - rangeStart + 1;
+            const prevEnd = rangeStart - 1;
+            const prevStart = prevEnd - periodMs + 1;
+            let previousGroups = await getPlateGroups({ start: prevStart, end: prevEnd });
+            previousGroups = filterPlateGroupsByScope(previousGroups, req.dataScope);
+            const prevTotal = previousGroups.length;
+            const prevBlue = previousGroups.filter(g => g.plateType === 'blue').length;
+            const prevGreen = previousGroups.filter(g => g.plateType === 'green').length;
+            const prevYellow = previousGroups.filter(g => g.plateType === 'yellow').length;
+            const prevOther = prevTotal - prevBlue - prevGreen - prevYellow;
+            trends = {
+                total: calculateTrend(total, prevTotal),
+                blue: calculateTrend(blue, prevBlue),
+                green: calculateTrend(green, prevGreen),
+                other: calculateTrend(other + yellow, prevOther + prevYellow)
+            };
+        } else if (date) {
             let dateTimestamp: number;
             if (typeof date === 'string') {
                 dateTimestamp = Number(date);
@@ -59,18 +105,6 @@ export const getDashboardStats = async (req: AuthenticatedRequest, res: Response
             const previousDayGreen = previousDayGroups.filter(g => g.plateType === 'green').length;
             const previousDayYellow = previousDayGroups.filter(g => g.plateType === 'yellow').length;
             const previousDayOther = previousDayTotal - previousDayBlue - previousDayGreen - previousDayYellow;
-
-            const calculateTrend = (current: number, previous: number): { value: string; direction: 'up' | 'down' | 'neutral' } => {
-                if (previous === 0) {
-                    if (current === 0) return { value: '0%', direction: 'neutral' };
-                    return { value: '+100%', direction: 'up' };
-                }
-                const change = ((current - previous) / previous) * 100;
-                const rounded = Math.round(change);
-                if (rounded > 0) return { value: `+${rounded}%`, direction: 'up' };
-                if (rounded < 0) return { value: `${rounded}%`, direction: 'down' };
-                return { value: '0%', direction: 'neutral' };
-            };
 
             trends = {
                 total: calculateTrend(total, previousDayTotal),

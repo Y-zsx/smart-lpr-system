@@ -11,15 +11,20 @@ import { CategoryDetail } from '@/components/CategoryDetail';
 import { apiClient } from '@/api/client';
 import { usePlateHistory } from '@/hooks/usePlateHistory';
 
+const today = () => new Date().toISOString().split('T')[0];
+
 export const DashboardPage: React.FC = () => {
     const { stats, setPlates, setStats } = usePlateStore();
-    const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+    const [startDate, setStartDate] = useState(today());
+    const [endDate, setEndDate] = useState(today());
     const [dataMode, setDataMode] = useState<'date' | 'total'>('date');
     const [selectedCategory, setSelectedCategory] = useState<{ type: string; label: string } | null>(null);
+    const [statsLoaded, setStatsLoaded] = useState(false);
 
-    const isToday = dataMode === 'date' && selectedDate === new Date().toISOString().split('T')[0];
+    const isToday = dataMode === 'date' && startDate === today() && endDate === today();
     const { data: plateGroups } = usePlateHistory({
-        date: dataMode === 'date' ? selectedDate : undefined,
+        startDate: dataMode === 'date' ? startDate : undefined,
+        endDate: dataMode === 'date' ? endDate : undefined,
         groupBy: 'plate',
         autoRefresh: isToday,
         refreshIntervalMs: 5000
@@ -36,12 +41,14 @@ export const DashboardPage: React.FC = () => {
         const fetchStats = async () => {
             if (document.hidden || stopped) return;
             try {
-                let start: number | undefined;
+                let startTs: number | undefined;
+                let endTs: number | undefined;
                 if (dataMode === 'date') {
-                    start = new Date(selectedDate).setHours(0, 0, 0, 0);
+                    startTs = new Date(startDate).setHours(0, 0, 0, 0);
+                    endTs = new Date(endDate).setHours(23, 59, 59, 999);
                 }
                 const dashboardStats = await (dataMode === 'date'
-                    ? apiClient.getDashboardStats(start)
+                    ? apiClient.getDashboardStats(startTs, endTs)
                     : apiClient.getDashboardStats());
                 if (dashboardStats) {
                     setStats({
@@ -52,6 +59,7 @@ export const DashboardPage: React.FC = () => {
                         other: dashboardStats.other,
                         trends: dashboardStats.trends
                     });
+                    setStatsLoaded(true);
                 }
                 failureCount = 0;
             } catch (e) {
@@ -69,10 +77,15 @@ export const DashboardPage: React.FC = () => {
             stopped = true;
             if (timer) window.clearTimeout(timer);
         };
-    }, [selectedDate, dataMode, setStats, isToday]);
+    }, [startDate, endDate, dataMode, setStats, isToday]);
 
-    const isCurrentDay = selectedDate === new Date().toISOString().split('T')[0];
-    const dateLabel = dataMode === 'total' ? '总量识别' : (isCurrentDay ? '今日识别' : '当日识别');
+    useEffect(() => {
+        setStatsLoaded(false);
+    }, [startDate, endDate, dataMode]);
+
+    const isSingleDay = startDate === endDate;
+    const isCurrentDay = isSingleDay && startDate === today();
+    const dateLabel = dataMode === 'total' ? '总量识别' : (isCurrentDay ? '今日识别' : (isSingleDay ? '当日识别' : '区间识别'));
 
     return (
         <div className="space-y-6">
@@ -91,36 +104,82 @@ export const DashboardPage: React.FC = () => {
                         </button>
                     </div>
                     {dataMode === 'date' && (
-                        <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-lg border border-gray-200">
-                            <div className="p-2 text-gray-500"><Calendar size={18} /></div>
-                            <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="bg-transparent border-none text-sm text-gray-700 focus:ring-0 cursor-pointer" />
+                        <div className="flex flex-wrap items-center gap-2">
+                            <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-lg border border-gray-200">
+                                <span className="text-xs text-gray-500 px-1">开始</span>
+                                <input
+                                    type="date"
+                                    value={startDate}
+                                    max={endDate}
+                                    onChange={(e) => {
+                                        const v = e.target.value;
+                                        setStartDate(v);
+                                        if (v > endDate) setEndDate(v);
+                                    }}
+                                    className="bg-transparent border-none text-sm text-gray-700 focus:ring-0 cursor-pointer min-w-0"
+                                />
+                            </div>
+                            <span className="text-gray-400">至</span>
+                            <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-lg border border-gray-200">
+                                <span className="text-xs text-gray-500 px-1">结束</span>
+                                <input
+                                    type="date"
+                                    value={endDate}
+                                    min={startDate}
+                                    onChange={(e) => {
+                                        const v = e.target.value;
+                                        setEndDate(v);
+                                        if (v < startDate) setStartDate(v);
+                                    }}
+                                    className="bg-transparent border-none text-sm text-gray-700 focus:ring-0 cursor-pointer min-w-0"
+                                />
+                            </div>
+                            <span className="text-sm text-gray-600">
+                                {startDate === endDate ? startDate : `${startDate} 至 ${endDate}`}
+                            </span>
                         </div>
                     )}
                 </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <StatCard label={dateLabel} value={stats.total} icon={<Activity size={20} />} color="bg-blue-500" trend={dataMode === 'total' ? undefined : (stats.trends?.total.value || '--')} trendDirection={dataMode === 'total' ? 'neutral' : (stats.trends?.total.direction || 'neutral')} />
-                <StatCard label="蓝牌车辆" value={stats.blue} icon={<ShieldCheck size={20} />} color="bg-indigo-500" trend={dataMode === 'total' ? undefined : (stats.trends?.blue.value || '--')} trendDirection={dataMode === 'total' ? 'neutral' : (stats.trends?.blue.direction || 'neutral')} />
-                <StatCard label="新能源" value={stats.green} icon={<Zap size={20} />} color="bg-green-500" trend={dataMode === 'total' ? undefined : (stats.trends?.green.value || '--')} trendDirection={dataMode === 'total' ? 'neutral' : (stats.trends?.green.direction || 'neutral')} />
-                <StatCard label="其他车辆" value={stats.yellow + stats.other} icon={<Car size={20} />} color="bg-orange-500" trend={dataMode === 'total' ? undefined : (stats.trends?.other.value || '--')} trendDirection={dataMode === 'total' ? 'neutral' : (stats.trends?.other.direction || 'neutral')} />
+                {!statsLoaded ? (
+                    [...Array(4)].map((_, i) => (
+                        <div key={i} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 animate-pulse">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-lg bg-gray-200" />
+                                <div className="flex-1">
+                                    <div className="h-3 bg-gray-200 rounded w-16 mb-2" />
+                                    <div className="h-6 bg-gray-200 rounded w-12" />
+                                </div>
+                            </div>
+                        </div>
+                    ))
+                ) : (
+                    <>
+                        <StatCard label={dateLabel} value={stats.total} icon={<Activity size={20} />} color="bg-blue-500" trend={dataMode === 'total' ? undefined : (stats.trends?.total.value || '--')} trendDirection={dataMode === 'total' ? 'neutral' : (stats.trends?.total.direction || 'neutral')} />
+                        <StatCard label="蓝牌车辆" value={stats.blue} icon={<ShieldCheck size={20} />} color="bg-indigo-500" trend={dataMode === 'total' ? undefined : (stats.trends?.blue.value || '--')} trendDirection={dataMode === 'total' ? 'neutral' : (stats.trends?.blue.direction || 'neutral')} />
+                        <StatCard label="新能源" value={stats.green} icon={<Zap size={20} />} color="bg-green-500" trend={dataMode === 'total' ? undefined : (stats.trends?.green.value || '--')} trendDirection={dataMode === 'total' ? 'neutral' : (stats.trends?.green.direction || 'neutral')} />
+                        <StatCard label="其他车辆" value={stats.yellow + stats.other} icon={<Car size={20} />} color="bg-orange-500" trend={dataMode === 'total' ? undefined : (stats.trends?.other.value || '--')} trendDirection={dataMode === 'total' ? 'neutral' : (stats.trends?.other.direction || 'neutral')} />
+                    </>
+                )}
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <DailyStatsChart date={dataMode === 'total' ? undefined : selectedDate} />
-                <PlateHeatmap date={dataMode === 'total' ? undefined : selectedDate} />
+                <DailyStatsChart date={dataMode === 'total' ? undefined : endDate} startDate={dataMode === 'date' ? startDate : undefined} />
+                <PlateHeatmap date={dataMode === 'total' ? undefined : endDate} startDate={dataMode === 'date' ? startDate : undefined} />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-1 h-[400px]">
                     <CategoryStats onCategoryClick={(type, label) => setSelectedCategory({ type, label })} />
                 </div>
                 <div className="lg:col-span-1 h-[400px]">
-                    <HourlyStatsChart date={dataMode === 'total' ? undefined : selectedDate} />
+                    <HourlyStatsChart startDate={dataMode === 'date' ? startDate : undefined} endDate={dataMode === 'date' ? endDate : undefined} />
                 </div>
                 <div className="lg:col-span-1 h-[400px]">
-                    <RecentPlatesList date={dataMode === 'total' ? undefined : selectedDate} limit={8} />
+                    <RecentPlatesList startDate={dataMode === 'date' ? startDate : undefined} endDate={dataMode === 'date' ? endDate : undefined} limit={8} />
                 </div>
             </div>
             {selectedCategory && (
-                <CategoryDetail type={selectedCategory.type} label={selectedCategory.label} onClose={() => setSelectedCategory(null)} date={dataMode === 'total' ? undefined : selectedDate} />
+                <CategoryDetail type={selectedCategory.type} label={selectedCategory.label} onClose={() => setSelectedCategory(null)} date={dataMode === 'total' ? undefined : endDate} startDate={dataMode === 'date' ? startDate : undefined} endDate={dataMode === 'date' ? endDate : undefined} />
             )}
         </div>
     );

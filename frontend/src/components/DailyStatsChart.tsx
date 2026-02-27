@@ -12,10 +12,11 @@ interface DailyStat {
 }
 
 interface DailyStatsChartProps {
-    date?: string; // 可选的日期参数，undefined 表示总量模式
+    date?: string; // 结束日期，undefined 表示总量模式
+    startDate?: string; // 区间开始日期，与 date 一起表示区间
 }
 
-export const DailyStatsChart: React.FC<DailyStatsChartProps> = React.memo(({ date }) => {
+export const DailyStatsChart: React.FC<DailyStatsChartProps> = React.memo(({ date, startDate }) => {
     const [stats, setStats] = useState<DailyStat[]>([]);
     const [loading, setLoading] = useState(true);
     const { settings } = usePlateStore();
