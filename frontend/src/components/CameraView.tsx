@@ -61,10 +61,11 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
     const streamPreviewUrl = isStream
         ? (useDirectStreamPreview ? directStreamUrl : (proxyStreamUrl || directStreamUrl))
         : '';
-    // 远程路径（cos/uploads）：仅用 blob 播放，避免 /api/media/redirect 长连接阻塞 AI 等请求；无 blob 时先拉取再播
+    // 远程路径（cos/uploads）：仅用 blob 播放；local:// 表示仅本机使用，只读本地 blob，不上传云
     const isRemoteFileUrl = !!(currentCamera?.url && (currentCamera.url.startsWith('cos://') || currentCamera.url.startsWith('uploads/')));
+    const isLocalOnlyFile = isFile && (currentCamera?.url === 'local://' || !currentCamera?.url);
     const fileVideoUrl = isFile
-        ? (effectiveCameraId && localBlobUrls[effectiveCameraId]) || (!isRemoteFileUrl ? (apiClient.getMediaUrl(currentCamera?.url) || '') : '')
+        ? (effectiveCameraId && localBlobUrls[effectiveCameraId]) || (!isLocalOnlyFile && currentCamera?.url && !isRemoteFileUrl ? (apiClient.getMediaUrl(currentCamera.url) || '') : '')
         : '';
     const fileVideoBlobProgress = effectiveCameraId ? blobLoadingProgress[effectiveCameraId] : undefined;
     const fileVideoBlobLoading = fileVideoBlobProgress?.loading ?? false;
@@ -790,6 +791,12 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                                     </button>
                                 </>
                             )}
+                        </div>
+                    ) : isLocalOnlyFile && !fileVideoUrl ? (
+                        <div className="flex flex-col items-center justify-center h-full text-gray-500 px-4 text-center">
+                            <VideoOff size={48} className="mb-4 opacity-50" />
+                            <p className="text-sm">仅本机使用，视频未加载</p>
+                            <p className="text-xs text-gray-400 mt-2">刷新后需在摄像头管理中重新选择视频文件</p>
                         </div>
                     ) : currentCamera?.url && !fileVideoUrl ? (
                         <div className="flex flex-col items-center justify-center h-full text-gray-500">

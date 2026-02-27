@@ -51,6 +51,8 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
     const [uploadingVideoFor, setUploadingVideoFor] = useState<'add' | 'edit' | null>(null);
     const [uploadingVideoName, setUploadingVideoName] = useState<string>('');
     const [selectedVideoFile, setSelectedVideoFile] = useState<File | null>(null);
+    /** 视频文件使用方式：上传到云 / 仅本机使用（不上传，直接用本地 blob） */
+    const [videoFileMode, setVideoFileMode] = useState<'cloud' | 'local'>('cloud');
     const [streamHelperExpanded, setStreamHelperExpanded] = useState(false);
 
     // 移除自动刷新设备列表，避免自动请求摄像头权限
@@ -75,21 +77,25 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                 return;
             }
         }
-        
+
         try {
             let urlToUse = newCam.url;
             if (addType === 'file' && selectedVideoFile) {
-                setUploadingVideoFor('add');
-                setUploadingVideoName(selectedVideoFile.name);
-                try {
-                    const uploaded = await apiClient.uploadVideoMedia(selectedVideoFile);
-                    urlToUse = uploaded.path;
-                } finally {
-                    setUploadingVideoFor(null);
-                    setUploadingVideoName('');
+                if (videoFileMode === 'cloud') {
+                    setUploadingVideoFor('add');
+                    setUploadingVideoName(selectedVideoFile.name);
+                    try {
+                        const uploaded = await apiClient.uploadVideoMedia(selectedVideoFile);
+                        urlToUse = uploaded.path;
+                    } finally {
+                        setUploadingVideoFor(null);
+                        setUploadingVideoName('');
+                    }
+                } else {
+                    urlToUse = 'local://';
                 }
             }
-            if (addType === 'file' && !urlToUse) {
+            if (addType === 'file' && videoFileMode === 'cloud' && !urlToUse) {
                 toast.warning('视频上传失败，请重试');
                 return;
             }
@@ -97,7 +103,7 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
             const savedCamera = await apiClient.addCamera({
                 name: newCam.name,
                 type: addType,
-                url: urlToUse ?? newCam.url,
+                url: urlToUse ?? newCam.url ?? (addType === 'file' ? 'local://' : ''),
                 regionCode: newCam.regionCode || undefined,
                 location: newCam.location?.address,
                 latitude: newCam.location?.lat,
@@ -113,6 +119,7 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
             setNewCam({ name: '', url: '', type: 'stream', regionCode: '', location: undefined });
             setAddType('stream');
             setSelectedVideoFile(null);
+            setVideoFileMode('cloud');
             toast.success('摄像头添加成功');
         } catch (error) {
             console.error('添加摄像头失败:', error);
@@ -136,6 +143,7 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
     const handleEdit = (camera: CameraDevice) => {
         setSelectedVideoFile(null);
         setEditingCamera(camera);
+        setVideoFileMode(camera.type === 'file' && (camera.url === 'local://' || !camera.url) ? 'local' : 'cloud');
         setEditCam({
             name: camera.name,
             url: camera.url || '',
@@ -165,7 +173,7 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
             toast.warning('请输入流地址');
             return;
         }
-        if (addType === 'file' && !editCam.url && !selectedVideoFile) {
+        if (addType === 'file' && editCam.url !== 'local://' && !editCam.url && !selectedVideoFile) {
             toast.warning('请选择视频文件');
             return;
         }
@@ -173,14 +181,18 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
         try {
             let urlToUse = editCam.url;
             if (addType === 'file' && selectedVideoFile) {
-                setUploadingVideoFor('edit');
-                setUploadingVideoName(selectedVideoFile.name);
-                try {
-                    const uploaded = await apiClient.uploadVideoMedia(selectedVideoFile);
-                    urlToUse = uploaded.path;
-                } finally {
-                    setUploadingVideoFor(null);
-                    setUploadingVideoName('');
+                if (videoFileMode === 'cloud') {
+                    setUploadingVideoFor('edit');
+                    setUploadingVideoName(selectedVideoFile.name);
+                    try {
+                        const uploaded = await apiClient.uploadVideoMedia(selectedVideoFile);
+                        urlToUse = uploaded.path;
+                    } finally {
+                        setUploadingVideoFor(null);
+                        setUploadingVideoName('');
+                    }
+                } else {
+                    urlToUse = 'local://';
                 }
             }
             // 更新到后端
@@ -212,6 +224,7 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
             setEditCam({ name: '', url: '', type: 'stream', regionCode: '', location: undefined });
             setAddType('stream');
             setSelectedVideoFile(null);
+            setVideoFileMode('cloud');
             toast.success('摄像头更新成功');
         } catch (error) {
             console.error('更新摄像头失败:', error);
@@ -603,21 +616,49 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                                     )}
                                 </div>
                             ) : (
-                                <div>
-                                    <label className="text-xs text-gray-500 block mb-1">视频文件</label>
-                                    <input
-                                        type="file"
-                                        accept="video/*"
-                                        onChange={handleFileSelect}
-                                        disabled={uploadingVideoFor === 'add'}
-                                        className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500"
-                                    />
-                                    {uploadingVideoFor === 'add' && (
-                                        <p className="text-xs text-blue-600 mt-1">上传中：{uploadingVideoName}</p>
-                                    )}
-                                    {selectedVideoFile && !uploadingVideoFor && (
-                                        <p className="text-xs text-green-600 mt-1">已选择：{selectedVideoFile.name}</p>
-                                    )}
+                                <div className="space-y-2">
+                                    <div>
+                                        <label className="text-xs text-gray-500 block mb-1">使用方式</label>
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setVideoFileMode('cloud')}
+                                                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                                    videoFileMode === 'cloud' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                }`}
+                                            >
+                                                上传到云
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setVideoFileMode('local')}
+                                                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                                    videoFileMode === 'local' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                }`}
+                                            >
+                                                仅本机使用
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            {videoFileMode === 'cloud' ? '上传后可在多端同步播放' : '不上传，仅本机用本地文件播放'}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-gray-500 block mb-1">视频文件</label>
+                                        <input
+                                            type="file"
+                                            accept="video/*"
+                                            onChange={handleFileSelect}
+                                            disabled={uploadingVideoFor === 'add'}
+                                            className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500"
+                                        />
+                                        {uploadingVideoFor === 'add' && (
+                                            <p className="text-xs text-blue-600 mt-1">上传中：{uploadingVideoName}</p>
+                                        )}
+                                        {selectedVideoFile && !uploadingVideoFor && (
+                                            <p className="text-xs text-green-600 mt-1">已选择：{selectedVideoFile.name}</p>
+                                        )}
+                                    </div>
                                 </div>
                             )}
                             <div>
@@ -790,24 +831,55 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                                     )}
                                 </div>
                             ) : (
-                                <div>
-                                    <label className="text-xs text-gray-500 block mb-1">视频文件</label>
-                                    <input
-                                        type="file"
-                                        accept="video/*"
-                                        onChange={handleFileSelect}
-                                        disabled={uploadingVideoFor === 'edit'}
-                                        className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500"
-                                    />
-                                    {uploadingVideoFor === 'edit' && (
-                                        <p className="text-xs text-blue-600 mt-1">上传中：{uploadingVideoName}</p>
-                                    )}
-                                    {selectedVideoFile && !uploadingVideoFor && (
-                                        <p className="text-xs text-green-600 mt-1">已选择新文件：{selectedVideoFile.name}</p>
-                                    )}
-                                    {editCam.url && !selectedVideoFile && (
-                                        <p className="text-xs text-gray-500 mt-1">当前已关联视频</p>
-                                    )}
+                                <div className="space-y-2">
+                                    <div>
+                                        <label className="text-xs text-gray-500 block mb-1">使用方式</label>
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={() => setVideoFileMode('cloud')}
+                                                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                                    videoFileMode === 'cloud' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                }`}
+                                            >
+                                                上传到云
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setVideoFileMode('local')}
+                                                className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                                    videoFileMode === 'local' ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                                                }`}
+                                            >
+                                                仅本机使用
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-1">
+                                            {videoFileMode === 'cloud' ? '上传后可在多端同步播放' : '不上传，仅本机用本地文件播放'}
+                                        </p>
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-gray-500 block mb-1">视频文件</label>
+                                        <input
+                                            type="file"
+                                            accept="video/*"
+                                            onChange={handleFileSelect}
+                                            disabled={uploadingVideoFor === 'edit'}
+                                            className="w-full px-3 py-2 bg-gray-50 rounded-lg text-sm border border-gray-200 focus:outline-none focus:border-blue-500"
+                                        />
+                                        {uploadingVideoFor === 'edit' && (
+                                            <p className="text-xs text-blue-600 mt-1">上传中：{uploadingVideoName}</p>
+                                        )}
+                                        {selectedVideoFile && !uploadingVideoFor && (
+                                            <p className="text-xs text-green-600 mt-1">已选择新文件：{selectedVideoFile.name}</p>
+                                        )}
+                                        {editCam.url && editCam.url !== 'local://' && !selectedVideoFile && (
+                                            <p className="text-xs text-gray-500 mt-1">当前已关联视频</p>
+                                        )}
+                                        {editCam.url === 'local://' && !selectedVideoFile && (
+                                            <p className="text-xs text-gray-500 mt-1">当前为仅本机使用，重新选择文件可替换</p>
+                                        )}
+                                    </div>
                                 </div>
                             )}
                             <div>
