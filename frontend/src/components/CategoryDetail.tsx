@@ -16,7 +16,7 @@ export const CategoryDetail: React.FC<CategoryDetailProps> = ({ type, label, onC
     const [groups, setGroups] = useState<PlateGroup[]>([]);
     const [loading, setLoading] = useState(true);
     const [selectedGroup, setSelectedGroup] = useState<PlateGroup | null>(null);
-    const { data: historyGroups, loading: historyLoading } = usePlateHistory({
+    const { data: historyGroups, loading: historyLoading, refresh } = usePlateHistory({
         date,
         type,
         groupBy: 'plate'
@@ -26,6 +26,17 @@ export const CategoryDetail: React.FC<CategoryDetailProps> = ({ type, label, onC
         setGroups(historyGroups);
         setLoading(historyLoading);
     }, [historyGroups, historyLoading]);
+
+    // 删除记录后刷新，并同步详情弹窗（若该车牌还有记录则更新 group，否则关闭弹窗）
+    useEffect(() => {
+        if (!selectedGroup) return;
+        const next = historyGroups.find(g => g.plateNumber === selectedGroup.plateNumber);
+        if (!next || next.records.length === 0) {
+            setSelectedGroup(null);
+        } else if (next !== selectedGroup) {
+            setSelectedGroup(next);
+        }
+    }, [historyGroups]);
 
     const getImageUrl = (path?: string) => {
         return apiClient.getImageUrl(path);
@@ -143,6 +154,7 @@ export const CategoryDetail: React.FC<CategoryDetailProps> = ({ type, label, onC
                 <PlateDetail
                     group={selectedGroup}
                     onClose={() => setSelectedGroup(null)}
+                    onDeleted={() => void refresh()}
                 />
             )}
         </>

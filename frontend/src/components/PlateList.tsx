@@ -42,6 +42,17 @@ export const PlateList: React.FC<PlateListProps> = React.memo(({ date }) => {
         });
     }, [historyGroups, historyLoading]);
 
+    // 删除记录后刷新列表，并同步详情弹窗内的数据（若该车牌还有记录则更新 group，否则关闭弹窗）
+    useEffect(() => {
+        if (!selectedGroup) return;
+        const next = plateGroups.find(g => g.plateNumber === selectedGroup.plateNumber);
+        if (!next || next.records.length === 0) {
+            setSelectedGroup(null);
+        } else if (next !== selectedGroup) {
+            setSelectedGroup(next);
+        }
+    }, [plateGroups]);
+
     // 基于搜索词和置信度阈值过滤车牌
     const filteredGroups = plateGroups.filter(group =>
         group.plateNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -185,10 +196,7 @@ export const PlateList: React.FC<PlateListProps> = React.memo(({ date }) => {
                 <PlateDetail
                     group={selectedGroup}
                     onClose={() => setSelectedGroup(null)}
-                    onDeleted={() => {
-                        setSelectedGroup(null);
-                        void refresh();
-                    }}
+                    onDeleted={() => void refresh()}
                 />
             )}
         </div>

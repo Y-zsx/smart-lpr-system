@@ -1041,7 +1041,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
             <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-4 pointer-events-auto z-10 px-2 sm:px-0">
                 <button
                     onClick={toggleScanning}
-                    disabled={!!error || fileVideoBlobLoading || (isStream && !hasPermission)}
+                    disabled={!!error || (isStream && !hasPermission) || (isFile && !fileVideoUrl)}
                     className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-full font-medium transition-all whitespace-nowrap ${isScanning
                         ? 'bg-red-500/90 hover:bg-red-600 text-white shadow-lg shadow-red-500/20'
                         : 'bg-blue-500/90 hover:bg-blue-600 text-white shadow-lg shadow-blue-500/20'
