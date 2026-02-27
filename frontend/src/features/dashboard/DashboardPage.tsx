@@ -8,8 +8,8 @@ import { StatCard } from '@/components/StatCard';
 import { usePlateStore } from '@/store/plateStore';
 import { Activity, ShieldCheck, Zap, Car, Calendar, Database } from 'lucide-react';
 import { CategoryDetail } from '@/components/CategoryDetail';
-import { apiClient } from '@/api/client';
 import { usePlateHistory } from '@/hooks/usePlateHistory';
+import { useDashboardStats } from '@/hooks/useDashboardStats';
 
 const today = () => new Date().toISOString().split('T')[0];
 
@@ -19,7 +19,6 @@ export const DashboardPage: React.FC = () => {
     const [endDate, setEndDate] = useState(today());
     const [dataMode, setDataMode] = useState<'date' | 'total'>('date');
     const [selectedCategory, setSelectedCategory] = useState<{ type: string; label: string } | null>(null);
-    const [statsLoaded, setStatsLoaded] = useState(false);
 
     const isToday = dataMode === 'date' && startDate === today() && endDate === today();
     const { data: plateGroups } = usePlateHistory({
@@ -30,58 +29,23 @@ export const DashboardPage: React.FC = () => {
         refreshIntervalMs: 5000
     });
 
+    const { data: dashboardStats, loading: statsLoading } = useDashboardStats({
+        dataMode,
+        startDate: dataMode === 'date' ? startDate : undefined,
+        endDate: dataMode === 'date' ? endDate : undefined,
+        autoRefresh: isToday,
+        refreshIntervalMs: 5000
+    });
+
     useEffect(() => {
         setPlates(plateGroups);
     }, [plateGroups, setPlates]);
 
     useEffect(() => {
-        let timer: number | undefined;
-        let stopped = false;
-        let failureCount = 0;
-        const fetchStats = async () => {
-            if (document.hidden || stopped) return;
-            try {
-                let startTs: number | undefined;
-                let endTs: number | undefined;
-                if (dataMode === 'date') {
-                    startTs = new Date(startDate).setHours(0, 0, 0, 0);
-                    endTs = new Date(endDate).setHours(23, 59, 59, 999);
-                }
-                const dashboardStats = await (dataMode === 'date'
-                    ? apiClient.getDashboardStats(startTs, endTs)
-                    : apiClient.getDashboardStats());
-                if (dashboardStats) {
-                    setStats({
-                        total: dashboardStats.total,
-                        blue: dashboardStats.blue,
-                        green: dashboardStats.green,
-                        yellow: dashboardStats.yellow,
-                        other: dashboardStats.other,
-                        trends: dashboardStats.trends
-                    });
-                    setStatsLoaded(true);
-                }
-                failureCount = 0;
-            } catch (e) {
-                console.error('Failed to fetch history:', e);
-                failureCount += 1;
-            } finally {
-                if (!isToday || stopped) return;
-                const delay = Math.min(30000, 5000 * Math.max(1, failureCount));
-                timer = window.setTimeout(fetchStats, delay);
-            }
-        };
+        if (dashboardStats) setStats(dashboardStats);
+    }, [dashboardStats, setStats]);
 
-        void fetchStats();
-        return () => {
-            stopped = true;
-            if (timer) window.clearTimeout(timer);
-        };
-    }, [startDate, endDate, dataMode, setStats, isToday]);
-
-    useEffect(() => {
-        setStatsLoaded(false);
-    }, [startDate, endDate, dataMode]);
+    const statsLoaded = dashboardStats != null;
 
     const isSingleDay = startDate === endDate;
     const isCurrentDay = isSingleDay && startDate === today();

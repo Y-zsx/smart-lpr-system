@@ -20,7 +20,10 @@ type HistoryCacheValue = {
 
 const cache = new Map<string, HistoryCacheValue>();
 const inFlight = new Map<string, Promise<PlateGroup[]>>();
-const CACHE_TTL_MS = 4000;
+/** 缓存有效期：此时间内直接用缓存，不请求 */
+const CACHE_TTL_MS = 60_000;
+/** 过期后仍先展示缓存再后台刷新的最大时长，超过则显示 loading */
+const CACHE_STALE_MS = 120_000;
 
 function toRange(params: { date?: string; startDate?: string; endDate?: string }): { start?: number; end?: number } {
     const { date, startDate, endDate } = params;
@@ -57,11 +60,29 @@ export function usePlateHistory(params: UsePlateHistoryParams) {
     const load = useCallback(async (force = false, signal?: AbortSignal) => {
         const now = Date.now();
         const cached = cache.get(cacheKey);
-        if (!force && cached && now - cached.ts < CACHE_TTL_MS) {
-            setData(cached.data);
-            setLoading(false);
-            setError(null);
-            return;
+        if (!force && cached) {
+            const age = now - cached.ts;
+            if (age < CACHE_TTL_MS) {
+                setData(cached.data);
+                setLoading(false);
+                setError(null);
+                return;
+            }
+            // 过期但在“可接受陈旧”时间内：先展示缓存，再后台刷新，避免切换回来又转圈
+            if (age < CACHE_STALE_MS) {
+                setData(cached.data);
+                setLoading(false);
+                setError(null);
+                const { start, end } = toRange({ date, startDate, endDate });
+                apiClient.getHistory(start, end, type, groupBy)
+                    .then((groups) => {
+                        const normalized = (Array.isArray(groups) ? groups : []) as PlateGroup[];
+                        setData(normalized);
+                        cache.set(cacheKey, { ts: Date.now(), data: normalized });
+                    })
+                    .catch(() => { /* 保留旧数据 */ });
+                return;
+            }
         }
         let promise = inFlight.get(cacheKey);
         if (promise) {
