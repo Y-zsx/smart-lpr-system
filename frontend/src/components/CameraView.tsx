@@ -543,6 +543,8 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
 
     // 摄像头切换时：先中断并清空当前画面，再加载新摄像头，避免窗口叠加
     useEffect(() => {
+        // 切换摄像头即取消当前错误/重试弹层，避免切到其他摄像头后重试仍挂着
+        setError('');
         // 无条件清空所有可能正在显示的源，再根据新摄像头类型加载
         if (remoteVideoRef.current) {
             remoteVideoRef.current.removeAttribute('src');
