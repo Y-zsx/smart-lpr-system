@@ -541,19 +541,13 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         };
     }, [effectiveCameraId, currentCamera?.id]);
 
-    // 摄像头切换时：先中断并清空当前画面，再加载新摄像头，避免窗口叠加
+    // 摄像头切换时：取消叠加状态；仅停止本地流，不清空新摄像头的 img/video src（否则会清到刚挂上的新元素）
     useEffect(() => {
-        // 切换摄像头即取消当前错误/重试弹层，避免切到其他摄像头后重试仍挂着
         setError('');
-        // 无条件清空所有可能正在显示的源，再根据新摄像头类型加载
-        if (remoteVideoRef.current) {
-            remoteVideoRef.current.removeAttribute('src');
-        }
-        if (fileVideoRef.current) {
-            fileVideoRef.current.pause();
-            fileVideoRef.current.removeAttribute('src');
-            fileVideoRef.current.load();
-        }
+        setFileVideoBlobLoading(false);
+        setFileVideoBlobError(null);
+        setHasPermission(false);
+        // 只停止本地摄像头流；remoteVideoRef/fileVideoRef 在切换后已指向新元素，不能清 src
         if (streamRef.current) {
             streamRef.current.getTracks().forEach(t => t.stop());
             streamRef.current = null;
@@ -620,9 +614,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
 
             setError('');
         } else if (!isLocal && !isFile && (currentCamera?.url || streamPreviewUrl)) {
-            // 网络流也需要立即加载预览
-            setHasPermission(true);
-            updateCameraStatus(currentCamera.id, 'online');
+            // 网络流不在此处设 hasPermission，等 img onLoad 收到首帧后再设，否则连不上时也会显示「可识别」
         } else if (isFile && !currentCamera?.url) {
             console.warn('视频文件摄像头没有 URL:', currentCamera);
             setError('视频文件 URL 缺失，请重新添加视频文件');
@@ -826,42 +818,44 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                             <p className="text-sm mt-2 text-gray-400">请重新添加视频文件</p>
                         </div>
                     )
-                ) : hasPermission ? (
-                    isLocal ? (
-                        <video
-                            ref={videoRef}
-                            autoPlay
-                            playsInline
-                            muted
+                ) : (isStream && streamPreviewUrl) ? (
+                    <div className="w-full h-full relative" key={`stream-wrap-${effectiveCameraId}`}>
+                        <img
+                            ref={remoteVideoRef}
+                            key={`stream-${effectiveCameraId}`}
+                            src={streamPreviewUrl}
+                            alt="Remote Stream"
                             className="w-full h-full object-cover"
+                            crossOrigin="anonymous"
+                            onLoad={() => {
+                                setHasPermission(true);
+                                setError('');
+                                updateCameraStatus(currentCamera?.id ?? '', 'online');
+                            }}
+                            onError={() => {
+                                if (!useDirectStreamPreview && directStreamUrl) {
+                                    setUseDirectStreamPreview(true);
+                                    setError('代理连接失败，已自动切换到摄像头直连预览');
+                                    return;
+                                }
+                                setError('无法连接到远程摄像头流');
+                            }}
                         />
-                    ) : (
-                        <div className="w-full h-full relative" key={`stream-wrap-${effectiveCameraId}`}>
-                            {streamPreviewUrl ? (
-                                <img
-                                    ref={remoteVideoRef}
-                                    key={`stream-${effectiveCameraId}`}
-                                    src={streamPreviewUrl}
-                                    alt="Remote Stream"
-                                    className="w-full h-full object-cover"
-                                    crossOrigin="anonymous"
-                                    onError={() => {
-                                        if (!useDirectStreamPreview && directStreamUrl) {
-                                            setUseDirectStreamPreview(true);
-                                            setError('代理连接失败，已自动切换到摄像头直连预览');
-                                            return;
-                                        }
-                                        setError('无法连接到远程摄像头流');
-                                    }}
-                                />
-                            ) : (
-                                <div className="flex flex-col items-center justify-center h-full text-gray-500">
-                                    <AlertTriangle size={48} className="mb-4 text-yellow-500" />
-                                    <p>未配置流地址</p>
-                                </div>
-                            )}
-                        </div>
-                    )
+                        {!hasPermission && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                                <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-500 border-t-transparent" />
+                                <span className="ml-3 text-white text-sm">连接中…</span>
+                            </div>
+                        )}
+                    </div>
+                ) : hasPermission && isLocal ? (
+                    <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-full h-full object-cover"
+                    />
                 ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center text-gray-500">
                         <VideoOff size={48} className="mb-4 opacity-50" />
@@ -1037,10 +1031,11 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
             <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 flex gap-4 pointer-events-auto z-10 px-2 sm:px-0">
                 <button
                     onClick={toggleScanning}
+                    disabled={!!error || fileVideoBlobLoading || (isStream && !hasPermission)}
                     className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-full font-medium transition-all whitespace-nowrap ${isScanning
                         ? 'bg-red-500/90 hover:bg-red-600 text-white shadow-lg shadow-red-500/20'
                         : 'bg-blue-500/90 hover:bg-blue-600 text-white shadow-lg shadow-blue-500/20'
-                        }`}
+                        } disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none`}
                 >
                     {isScanning ? (
                         <>
