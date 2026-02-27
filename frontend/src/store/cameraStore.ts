@@ -15,12 +15,19 @@ export interface CameraDevice {
     longitude?: number; // 经度
 }
 
+/** 单个摄像头的 blob 加载状态，progress 0-100，无总大小时为 -1（不确定） */
+export type BlobLoadProgress = { loading: boolean; progress: number };
+
 interface CameraStore {
     cameras: CameraDevice[];
     selectedCameraId: string;
     availableDevices: MediaDeviceInfo[]; // 可用的本地摄像头设备列表
     /** 本会话内「视频文件」摄像头的本地 blob 播放地址，避免从服务器拉流卡顿（不持久化） */
     localBlobUrls: Record<string, string>;
+    /** 各摄像头视频 blob 加载进度与状态（不持久化） */
+    blobLoadingProgress: Record<string, BlobLoadProgress>;
+    /** 各摄像头 blob 加载失败时的错误信息（不持久化） */
+    blobLoadError: Record<string, string | null>;
 
     addCamera: (camera: Omit<CameraDevice, 'id' | 'status'> | CameraDevice) => void;
     updateCamera: (id: string, camera: Partial<Omit<CameraDevice, 'id'>>) => void;
@@ -28,6 +35,10 @@ interface CameraStore {
     selectCamera: (id: string) => void;
     updateCameraStatus: (id: string, status: 'online' | 'offline') => void;
     setLocalBlobUrl: (cameraId: string, blobUrl: string) => void;
+    /** 清除某路 blob 并撤销 URL，用于重试加载 */
+    clearBlobUrl: (cameraId: string) => void;
+    setBlobLoadingProgress: (cameraId: string, value: BlobLoadProgress) => void;
+    setBlobLoadError: (cameraId: string, error: string | null) => void;
     /** 从服务端拉取摄像头列表并写入 store，多设备同步以服务端为准 */
     setCamerasFromServer: (serverCameras: CameraDevice[]) => void;
     refreshDevices: () => Promise<void>;
@@ -48,6 +59,8 @@ export const useCameraStore = create<CameraStore>()(
             selectedCameraId: 'local-default',
             availableDevices: [],
             localBlobUrls: {},
+            blobLoadingProgress: {},
+            blobLoadError: {},
 
             addCamera: (camera) => set((state) => {
                 // 如果已经包含 id，直接使用；否则生成新的 id
@@ -73,6 +86,10 @@ export const useCameraStore = create<CameraStore>()(
                 if (prevBlob) try { URL.revokeObjectURL(prevBlob); } catch (_) {}
                 const nextBlobUrls = { ...state.localBlobUrls };
                 delete nextBlobUrls[id];
+                const nextProgress = { ...state.blobLoadingProgress };
+                delete nextProgress[id];
+                const nextError = { ...state.blobLoadError };
+                delete nextError[id];
                 const filtered = state.cameras.filter(c => c.id !== id);
                 const newSelected = state.selectedCameraId === id
                     ? (filtered[0]?.id || 'local-default')
@@ -80,15 +97,41 @@ export const useCameraStore = create<CameraStore>()(
                 return {
                     cameras: filtered,
                     selectedCameraId: newSelected,
-                    localBlobUrls: nextBlobUrls
+                    localBlobUrls: nextBlobUrls,
+                    blobLoadingProgress: nextProgress,
+                    blobLoadError: nextError
                 };
             }),
 
             setLocalBlobUrl: (cameraId, blobUrl) => set((state) => {
                 const prev = state.localBlobUrls[cameraId];
                 if (prev && prev !== blobUrl) try { URL.revokeObjectURL(prev); } catch (_) {}
-                return { localBlobUrls: { ...state.localBlobUrls, [cameraId]: blobUrl } };
+                const nextProgress = { ...state.blobLoadingProgress };
+                delete nextProgress[cameraId];
+                const nextError = { ...state.blobLoadError };
+                delete nextError[cameraId];
+                return {
+                    localBlobUrls: { ...state.localBlobUrls, [cameraId]: blobUrl },
+                    blobLoadingProgress: nextProgress,
+                    blobLoadError: nextError
+                };
             }),
+
+            clearBlobUrl: (cameraId) => set((state) => {
+                const prev = state.localBlobUrls[cameraId];
+                if (prev) try { URL.revokeObjectURL(prev); } catch (_) {}
+                const next = { ...state.localBlobUrls };
+                delete next[cameraId];
+                return { localBlobUrls: next };
+            }),
+
+            setBlobLoadingProgress: (cameraId, value) => set((state) => ({
+                blobLoadingProgress: { ...state.blobLoadingProgress, [cameraId]: value }
+            })),
+
+            setBlobLoadError: (cameraId, error) => set((state) => ({
+                blobLoadError: { ...state.blobLoadError, [cameraId]: error }
+            })),
 
             setCamerasFromServer: (serverCameras) => set((state) => {
                 const list = Array.isArray(serverCameras) ? serverCameras : [];
