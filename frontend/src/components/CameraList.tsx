@@ -347,10 +347,17 @@ export const CameraList: React.FC<CameraListProps> = ({ canManage = true }) => {
                                      <Globe size={16} />}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <p className={`text-sm font-medium truncate ${selectedCameraId === cam.id ? 'text-blue-900' : 'text-gray-700'
-                                        }`}>
-                                        {cam.name}
-                                    </p>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        <p className={`text-sm font-medium truncate ${selectedCameraId === cam.id ? 'text-blue-900' : 'text-gray-700'
+                                            }`}>
+                                            {cam.name}
+                                        </p>
+                                        {selectedCameraId === cam.id && (
+                                            <span className="text-xs px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 flex-shrink-0">
+                                                当前画面
+                                            </span>
+                                        )}
+                                    </div>
                                     <div className="flex items-center gap-2 mt-0.5">
                                         <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cam.status === 'online' ? 'bg-green-500' : 'bg-gray-300'
                                             }`} />

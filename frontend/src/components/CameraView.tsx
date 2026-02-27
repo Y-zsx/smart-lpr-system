@@ -127,6 +127,13 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
         setUseDirectStreamPreview(false);
     }, [currentCamera?.id, currentCamera?.url]);
 
+    // 单窗口模式：切换摄像头后重置为「已暂停」，避免新画面仍显示「识别中」（多窗口下各窗口用 independentScanning，不受影响）
+    useEffect(() => {
+        if (!independentScanning) {
+            setScanning(false);
+        }
+    }, [effectiveCameraId, independentScanning, setScanning]);
+
     // 远程文件型摄像头：用低优先级 fetch 拉成 blob 再播，避免 redirect 长连接占满同源导致 AI 请求被阻塞
     useEffect(() => {
         if (!isFile || !effectiveCameraId || !currentCamera?.url || !isRemoteFileUrl || localBlobUrls[effectiveCameraId]) {
@@ -876,7 +883,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                             </p>
                         )}
                         {!isFile && (
-                            <p className="text-sm mt-2">点击下方按钮开启识别</p>
+                            <p className="text-sm mt-2">点击「开始检测」即可自动识别车牌</p>
                         )}
                     </div>
                 )}
@@ -933,7 +940,7 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                         <div className="absolute top-4 left-4 bg-black/60 backdrop-blur-md px-3 py-1.5 rounded-full flex items-center gap-2 z-20">
                             <div className={`w-2.5 h-2.5 rounded-full ${isScanning ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`}></div>
                             <span className="text-white text-xs font-medium">
-                                {isScanning ? '智能检测中...' : '已暂停'}
+                                {isScanning ? '正在检测' : '未开启'}
                             </span>
                         </div>
                         <div className="absolute top-16 left-4 bg-black/60 backdrop-blur-md px-3 py-1 rounded-md z-20">
@@ -1050,12 +1057,12 @@ export const CameraView: React.FC<CameraViewProps> = ({ cameraId: propCameraId, 
                     {isScanning ? (
                         <>
                             <CameraOff size={18} />
-                            <span>停止识别</span>
+                            <span>暂停检测</span>
                         </>
                     ) : (
                         <>
                             <Camera size={18} />
-                            <span>开启识别</span>
+                            <span>开始检测</span>
                         </>
                     )}
                 </button>

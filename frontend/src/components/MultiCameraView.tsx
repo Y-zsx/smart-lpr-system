@@ -97,9 +97,10 @@ export const MultiCameraView: React.FC = () => {
     return (
         <div className="w-full h-full flex flex-col bg-gray-50">
             {/* 工具栏 */}
-            <div className="bg-white border-b border-gray-200 p-2 flex items-center justify-between gap-2 shrink-0">
+            <div className="bg-white border-b border-gray-200 p-2 flex items-center justify-between gap-2 shrink-0 flex-wrap">
                 <div className="flex items-center gap-2 min-w-0 overflow-x-auto">
-                    <span className="text-sm font-medium text-gray-700">布局:</span>
+                    <span className="text-xs text-gray-500 hidden sm:inline">每格可独立开始或暂停检测</span>
+                    <span className="text-sm font-medium text-gray-700 sm:ml-2">布局:</span>
                     <div className="flex gap-1">
                         {availableLayouts.map((l) => (
                             <button

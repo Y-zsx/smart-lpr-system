@@ -8,6 +8,11 @@ import { Camera, Upload, Map, List, Grid } from 'lucide-react';
 import { useCameraStore } from '@/store/cameraStore';
 import { apiClient } from '@/api/client';
 
+/**
+ * 实时监控页：一路 / 多路 / 图片上传
+ * - 一路：当前只看一个画面，切换摄像头会暂停检测，需重新点「开始检测」。
+ * - 多路：每个格子可独立「开始检测」或「暂停检测」，多路同时看、同时检测。
+ */
 interface LiveMonitorPageProps {
     canManageCamera?: boolean;
 }
@@ -44,10 +49,10 @@ export const LiveMonitorPage: React.FC<LiveMonitorPageProps> = ({ canManageCamer
                 <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col h-full">
                     <div className="flex border-b border-gray-100 shrink-0 overflow-x-auto">
                         <button onClick={() => setMode('camera')} className={`min-w-[108px] sm:min-w-0 flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${mode === 'camera' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
-                            <Camera size={18} /><span className="whitespace-nowrap">单窗口</span>
+                            <Camera size={18} /><span className="whitespace-nowrap">一路</span>
                         </button>
                         <button onClick={() => setMode('multi')} className={`min-w-[108px] sm:min-w-0 flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${mode === 'multi' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
-                            <Grid size={18} /><span className="whitespace-nowrap">多窗口</span>
+                            <Grid size={18} /><span className="whitespace-nowrap">多路</span>
                         </button>
                         <button onClick={() => setMode('upload')} className={`min-w-[116px] sm:min-w-0 flex-1 py-3 text-sm font-medium flex items-center justify-center gap-2 transition-colors ${mode === 'upload' ? 'bg-blue-50 text-blue-600 border-b-2 border-blue-600' : 'text-gray-500 hover:bg-gray-50'}`}>
                             <Upload size={18} /><span className="whitespace-nowrap">图片上传</span>
